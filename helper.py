@@ -116,26 +116,27 @@ root.geometry("200x100")
 tab_control = ttk.Notebook(root)
 
 main_tab = ttk.Frame(tab_control)
-main_tab.grid_rowconfigure(0, weight=1)
-main_tab.grid_columnconfigure(0, weight=1)
 tab_control.add(main_tab, text='Main')
 
 button_key = tk.Text(main_tab, height=1, width=5, bg="white")
+button_key.pack()
 
 click_flask_button = tk.Button(main_tab, text="Start flask", command=run_loop_flask, width=20, height=5)
+click_flask_button.pack()
 
 inner_frame = ttk.Frame(main_tab)
 
 record_button = tk.Button(inner_frame, text="Record", command=record_mouse, width=20, height=5, )
-record_button.grid(row=1, column=0, padx=10, pady=10)
+# record_button.grid(row=1, column=0, padx=10, pady=10)
 
 play_button = tk.Button(inner_frame, text="Play", command=play_recorded_mouse, width=20, height=5, )
-play_button.grid(row=1, column=1, padx=10, pady=10)
+# play_button.grid(row=1, column=1, padx=10, pady=10)
 
 apps_tab = ttk.Frame(tab_control)
 tab_control.add(apps_tab, text='Apps')
 
 open_app_button = tk.Button(apps_tab, text="Open App", command=open_app)
+open_app_button.pack()
 
 tab_control.pack(expand=1, fill='both')
 root.attributes('-topmost', True)
