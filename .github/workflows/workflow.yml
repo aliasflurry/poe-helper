@@ -15,6 +15,14 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: Verify checkout
+      run: |
+        Write-Host "Workspace: ${{ github.workspace }}"
+        Set-Location ${{ github.workspace }}
+        Write-Host "Current directory: $(Get-Location)"
+        Write-Host "Contents:"
+        Get-ChildItem -Force
+
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
@@ -27,9 +35,14 @@ jobs:
         pip install -r requirements.txt
 
     - name: Build with PyInstaller
-      working-directory: ${{ github.workspace }}
       run: |
-        pyinstaller helper.spec
+        Set-Location ${{ github.workspace }}
+        Write-Host "Current directory: $(Get-Location)"
+        Write-Host "Files in directory:"
+        Get-ChildItem
+        Write-Host "Checking for helper.spec:"
+        Test-Path helper.spec
+        python -m PyInstaller helper.spec
 
     - name: Create Tag
       id: create_tag
