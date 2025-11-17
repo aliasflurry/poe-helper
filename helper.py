@@ -3,12 +3,13 @@ import threading
 import time
 import tkinter as tk
 import tkinter.ttk as ttk
-from random import randint, uniform
-
+from random import uniform
 import psutil
 import pyautogui
 import keyboard
 import win32process
+from typing import Optional
+from threading import Event
 
 try:
     import win32gui
@@ -16,281 +17,266 @@ except ImportError:
     print("Warning: pywin32 not installed. Window detection will not work.")
     win32gui = None
 
-global running_flask
-global running_weapon_swap
-global scroll_running
-running_mana = True
-FLASK_MIN = 8
-FLASK_MAX = 9
-poe1_enabled = True  # Path of Exile 1 checkbox enabled by default
-poe2_enabled = True  # Path of Exile 2 checkbox enabled by default
 
+class PathOfExileHelper:
+    def __init__(self):
+        self.root = tk.Tk("PGame Helper")
+        self.root.geometry("500x300")
 
-def get_root_window(hwnd):
-    """Fallback replacement for win32gui.GetAncestor"""
-    parent = win32gui.GetParent(hwnd)
-    while parent != 0:
-        hwnd = parent
-        parent = win32gui.GetParent(hwnd)
-    return hwnd
+        # Threading control
+        self.flask_event = Event()
+        self.weapon_swap_event = Event()
+        self.flask_thread: Optional[threading.Thread] = None
 
+        # State variables
+        self.poe1_enabled = True
+        self.poe2_enabled = True
 
-def is_path_of_exile_active():
-    global poe1_enabled, poe2_enabled
+        # Constants
+        self.FLASK_MIN = 8
+        self.FLASK_MAX = 9
 
-    try:
-        hwnd = win32gui.GetForegroundWindow()
-        hwnd_root = get_root_window(hwnd)
+        # UI Elements
+        self.button_key: Optional[tk.Text] = None
+        self.button_delay: Optional[tk.Text] = None
+        self.weapon_key: Optional[tk.Text] = None
+        self.click_flask_button: Optional[tk.Button] = None
+        self.click_weapon_swap_button: Optional[tk.Button] = None
 
-        pid = win32process.GetWindowThreadProcessId(hwnd_root)[1]
-        process_name = psutil.Process(pid).name().lower()
+        self.setup_ui()
+        # Register cleanup on window close
+        self.root.protocol("WM_DELETE_WINDOW", self.cleanup_and_close)
 
-        # Path of Exile 1 checks
-        if poe1_enabled and (
-            process_name.startswith("pathofexile") and
-            not process_name.startswith("pathofexile2")
-        ):
-            return True
+    def setup_ui(self):
+        """Initialize all UI elements"""
+        tab_control = ttk.Notebook(self.root)
+        main_tab = ttk.Frame(tab_control)
+        tab_control.add(main_tab, text='Main')
 
-        # Path of Exile 2 checks
-        if poe2_enabled and process_name.startswith("pathofexile2"):
-            return True
+        # POE Version Checkboxes
+        self.setup_poe_checkboxes(main_tab)
 
-        return False
+        # Flask Controls
+        self.setup_flask_controls(main_tab)
 
-    except Exception as e:
-        print("Detection error:", e)
-        return False
+        # Weapon Swap Controls
+        self.setup_weapon_swap_controls(main_tab)
 
+        tab_control.pack(expand=1, fill='both')
+        self.root.attributes('-topmost', True)
 
-def loop_flask():
-    click_flask_button.focus()
-    global running_flask
-    button_key_label = button_key.get(1.0, "end-1c")
-    button_key_list = button_key_label.split(" ")
-    button_delay_label = button_delay.get(1.0, "end-1c")
-    button_delay_list = button_delay_label.split(" ")
-    min_delay = button_delay_list[0] if len(button_delay_list) >= 1 else FLASK_MIN
-    max_delay = button_delay_list[1] if len(button_delay_list) >= 2 else FLASK_MAX
-    while running_flask:
-        if keyboard.is_pressed('f11'):
-            print("F11 pressed")
-            stop_flask()
-            break
-        if not is_path_of_exile_active():
-            print("Path of Exile window not active, skipping...")
-            time.sleep(0.5)
-            continue
-        for button_key_entry in button_key_list:
-            button_key_press = str(button_key_entry) if len(button_key_entry) > 0 else "1"
+    def setup_poe_checkboxes(self, parent):
+        poe1_checkbox_var = tk.BooleanVar(value=True)
+        poe1_checkbox = tk.Checkbutton(
+            parent,
+            text="Only work in Path of Exile",
+            variable=poe1_checkbox_var,
+            command=lambda: self.set_poe1_enabled(poe1_checkbox_var.get())
+        )
+        poe1_checkbox.pack(pady=2)
 
-            keyboard.press_and_release(button_key_press)
-        print("Sleep " + str(min_delay) + " " + str(max_delay))
-        time.sleep(uniform(float(min_delay), float(max_delay)))
-        # keyboard.release("1")1
-        # time.sleep(3.5)
+        poe2_checkbox_var = tk.BooleanVar(value=True)
+        poe2_checkbox = tk.Checkbutton(
+            parent,
+            text="Only work in Path of Exile 2",
+            variable=poe2_checkbox_var,
+            command=lambda: self.set_poe2_enabled(poe2_checkbox_var.get())
+        )
+        poe2_checkbox.pack(pady=2)
 
+    def setup_flask_controls(self, parent):
+        # Button Key Frame
+        button_key_frame = tk.Frame(parent)
+        button_key_frame.pack()
+        tk.Label(button_key_frame, text="Button").pack(side='left', padx=5)
+        self.button_key = tk.Text(button_key_frame, height=1, width=5, bg="white")
+        self.button_key.pack(side='left')
 
-def run_loop_flask():
-    global running_flask
-    if click_flask_button['text'] != 'Stop flask':
-        start_flask()
-    else:
-        stop_flask()
+        # Button Delay Frame
+        button_delay_frame = tk.Frame(parent)
+        button_delay_frame.pack()
+        tk.Label(button_delay_frame, text="Delay").pack(side='left', padx=5)
+        self.button_delay = tk.Text(button_delay_frame, height=1, width=5, bg="white")
+        self.button_delay.pack(side='left')
 
+        self.click_flask_button = tk.Button(
+            parent,
+            text="Start flask",
+            command=self.toggle_flask,
+            width=20,
+            height=5,
+            padx=10,
+            pady=10
+        )
+        self.click_flask_button.pack()
 
-def start_flask():
-    global running_flask
-    running_flask = True
-    print("Start flask")
-    click_flask_button['text'] = 'Stop flask'
-    button_key.config(state='disabled')
-    button_delay.config(state='disabled')
-    thread = threading.Thread(target=loop_flask)
-    thread.start()
+    def setup_weapon_swap_controls(self, parent):
+        weapon_key_frame = tk.Frame(parent)
+        weapon_key_frame.pack(pady=(20, 0))
+        tk.Label(weapon_key_frame, text="Button").pack(side='left', padx=5)
+        self.weapon_key = tk.Text(weapon_key_frame, height=1, width=5, bg="white")
+        self.weapon_key.pack(side='left')
 
+        self.click_weapon_swap_button = tk.Button(
+            parent,
+            text="Start weapon swap",
+            command=self.toggle_weapon_swap,
+            width=20,
+            height=5,
+            padx=10,
+            pady=10
+        )
+        self.click_weapon_swap_button.pack()
 
-def stop_flask():
-    global running_flask
-    print("Stop flask")
-    click_flask_button['text'] = 'Start flask'
-    running_flask = False
-    button_key.config(state='normal')
-    button_delay.config(state='normal')
+    def get_root_window(self, hwnd):
+        """Get the root window handle"""
+        try:
+            parent = win32gui.GetParent(hwnd)
+            while parent != 0:
+                hwnd = parent
+                parent = win32gui.GetParent(hwnd)
+            return hwnd
+        except Exception as e:
+            print(f"Error getting root window: {e}")
+            return None
 
+    def is_path_of_exile_active(self) -> bool:
+        """Check if POE window is active"""
+        try:
+            if not win32gui:
+                return False
 
-def execute_weapon_swap_sequence():
-    global running_weapon_swap
-    try:
-        if not running_weapon_swap:
-            print("Weapon swap not running, skipping...")
+            hwnd = win32gui.GetForegroundWindow()
+            hwnd_root = self.get_root_window(hwnd)
+            if not hwnd_root:
+                return False
+
+            pid = win32process.GetWindowThreadProcessId(hwnd_root)[1]
+            process_name = psutil.Process(pid).name().lower()
+
+            return (
+                    (self.poe1_enabled and process_name.startswith("pathofexile") and
+                     not process_name.startswith("pathofexile2")) or
+                    (self.poe2_enabled and process_name.startswith("pathofexile2"))
+            )
+        except Exception as e:
+            print(f"Detection error: {e}")
+            return False
+
+    def flask_loop(self):
+        """Main flask loop with proper resource management"""
+        try:
+            button_keys = self.button_key.get(1.0, "end-1c").split()
+            delays = self.button_delay.get(1.0, "end-1c").split()
+            min_delay = float(delays[0]) if delays else self.FLASK_MIN
+            max_delay = float(delays[1]) if len(delays) > 1 else self.FLASK_MAX
+
+            while not self.flask_event.is_set():
+                if keyboard.is_pressed('f11'):
+                    print("F11 pressed")
+                    break
+
+                if not self.is_path_of_exile_active():
+                    time.sleep(0.5)
+                    continue
+
+                for key in button_keys:
+                    if self.flask_event.is_set():
+                        break
+                    keyboard.press_and_release(key)
+
+                time.sleep(uniform(min_delay, max_delay))
+        finally:
+            self.stop_flask()
+
+    def toggle_flask(self):
+        """Toggle flask automation"""
+        if self.click_flask_button['text'] == 'Start flask':
+            self.start_flask()
+        else:
+            self.stop_flask()
+
+    def start_flask(self):
+        """Start flask automation with proper thread management"""
+        self.flask_event.clear()
+        self.click_flask_button['text'] = 'Stop flask'
+        self.button_key.config(state='disabled')
+        self.button_delay.config(state='disabled')
+
+        self.flask_thread = threading.Thread(target=self.flask_loop)
+        self.flask_thread.daemon = True
+        self.flask_thread.start()
+
+    def stop_flask(self):
+        """Stop flask automation and cleanup resources"""
+        self.flask_event.set()
+        self.click_flask_button['text'] = 'Start flask'
+        self.button_key.config(state='normal')
+        self.button_delay.config(state='normal')
+
+    def execute_weapon_swap(self, e):
+        """Execute weapon swap sequence"""
+        if self.weapon_swap_event.is_set() or not self.is_path_of_exile_active():
             return
-        if not is_path_of_exile_active():
-            print("Path of Exile window not active, skipping weapon swap...")
-            return
-        weapon_key_label = weapon_key.get(1.0, "end-1c")
-        weapon_key_list = weapon_key_label.split(" ")
-        weapon_key_list.insert(0, "X")
-        weapon_key_list.insert(1, "X")
-        for weapon_key_entry in weapon_key_list:
-            weapon_key_press = str(weapon_key_entry) if len(weapon_key_entry) > 0 else "1"
-            keyboard.press_and_release(weapon_key_press)
-            time.sleep(0.2)  # 0.2 second delay between key presses
-    except Exception as e:
-        print(f"Error in execute_weap1on_swap_sequence: {e}")
-        # Hotkey will continue to work after exception
 
+        try:
+            weapon_keys = ['X', 'X'] + self.weapon_key.get(1.0, "end-1c").split()
+            for key in weapon_keys:
+                keyboard.press_and_release(key)
+                time.sleep(0.2)
+        except Exception as e:
+            print(f"Weapon swap error: {e}")
 
-def run_loop_weapon_swap():
-    global running_weapon_swap
-    if click_weapon_swap_button['text'] != 'Stop weapon swap':
-        start_weapon_swap()
-    else:
-        stop_weapon_swap()
+    def toggle_weapon_swap(self):
+        """Toggle weapon swap functionality"""
+        if self.click_weapon_swap_button['text'] == 'Start weapon swap':
+            self.start_weapon_swap()
+        else:
+            self.stop_weapon_swap()
 
+    def start_weapon_swap(self):
+        """Start weapon swap with proper resource management"""
+        self.weapon_swap_event.clear()
+        self.click_weapon_swap_button['text'] = 'Stop weapon swap'
+        self.weapon_key.config(state='disabled')
+        keyboard.on_press_key('a', self.execute_weapon_swap)
 
-def start_weapon_swap():
-    global running_weapon_swap
-    running_weapon_swap = True
-    print("Start weapon swap - Press 'A' to execute")
-    click_weapon_swap_button['text'] = 'Stop weapon swap'
-    weapon_key.config(state='disabled')
-    keyboard.add_hotkey('a', execute_weapon_swap_sequence)
+    def stop_weapon_swap(self):
+        """Stop weapon swap and cleanup resources"""
+        self.weapon_swap_event.set()
+        self.click_weapon_swap_button['text'] = 'Start weapon swap'
+        self.weapon_key.config(state='normal')
+        keyboard.unhook_key('a')
 
+    def set_poe1_enabled(self, value: bool):
+        """Set POE1 enabled state"""
+        self.poe1_enabled = value
 
-def stop_weapon_swap():
-    global running_weapon_swap
-    print("Stop weapon swap")
-    click_weapon_swap_button['text'] = 'Start weapon swap'
-    running_weapon_swap = False
-    weapon_key.config(state='normal')
-    keyboard.remove_hotkey('a')
+    def set_poe2_enabled(self, value: bool):
+        """Set POE2 enabled state"""
+        self.poe2_enabled = value
 
+    def cleanup_and_close(self):
+        """Cleanup all resources before closing"""
+        print("Cleaning up resources...")
+        # Stop all running operations
+        self.stop_flask()
+        self.stop_weapon_swap()
 
-def record_mouse():
-    # Code to run when the "Stop" button is pressed
-    global running_mana
-    # if record_button['text'] != 'Stop':
-    #     running_mana = True
-    #     print("Start mana")
-    #     record_button['text'] = 'Stop'
-    #     thread = threading.Thread(target=run_loop_manabond)
-    #     thread.start()
-    # else:
-    #     print("Stop mana")
-    #     record_button['text'] = 'Start mana'
-    #     running_mana = False
+        # Remove all keyboard hooks
+        keyboard.unhook_all()
 
+        # Destroy all widgets
+        self.root.destroy()
 
-def open_app():
-    subprocess.Popen(["start",
-                      '"D:\\Awakened POE Trade\\Awakened PoE Trade.exe"'],
-                     shell=True)  # replace "TextEdit" with the name of the app you want to open
-
-
-def record_mouse_activity(filename):
-    """
-    Record mouse clicks and positions and save them to a file.
-
-    :param filename: The name of the file to save the recorded activities.
-    """
-    mouse_activities = []
-
-    try:
-        while True:
-            x, y = pyautogui.position()
-            event = pyautogui.mouseInfo()
-            mouse_activities.append((x, y, event))
-
-            time.sleep(0.1)  # Adjust the delay according to your needs
-
-    except KeyboardInterrupt:
-        with open(filename, 'w') as file:
-            for activity in mouse_activities:
-                file.write(f"{activity[0]},{activity[1]},{activity[2]}\n")
-
-
-def replay_mouse_activity(filename):
-    """
-    Replay the recorded mouse activities.
-
-    :param filename: The name of the file containing the recorded activities.
-    """
-    with open(filename, 'r') as file:
-        mouse_activities = [tuple(map(int, line.strip().split(','))) for line in file]
-
-    for activity in mouse_activities:
-        x, y, event = activity
-        pyautogui.moveTo(x, y)
-        pyautogui.click() if 'down' in event else pyautogui.click(
-            button='right') if 'right' in event else pyautogui.click(button='middle')
-
-        # Adjust the delay according to your needs
-        time.sleep(0.1)
-
-
-def play_recorded_mouse():
-    return
-
-
-root = tk.Tk("PGame Helper")
-root.geometry("500x300")
-
-tab_control = ttk.Notebook(root)
-
-main_tab = ttk.Frame(tab_control)
-tab_control.add(main_tab, text='Main')
-
-
-def set_poe1_enabled(value):
-    global poe1_enabled
-    poe1_enabled = value
-
-
-def set_poe2_enabled(value):
-    global poe2_enabled
-    poe2_enabled = value
-
-
-poe1_checkbox_var = tk.BooleanVar(value=True)
-poe1_checkbox = tk.Checkbutton(main_tab, text="Only work in Path of Exile", variable=poe1_checkbox_var,
-                               command=lambda: set_poe1_enabled(poe1_checkbox_var.get()))
-poe1_checkbox.pack(pady=2)
-
-poe2_checkbox_var = tk.BooleanVar(value=True)
-poe2_checkbox = tk.Checkbutton(main_tab, text="Only work in Path of Exile 2", variable=poe2_checkbox_var,
-                               command=lambda: set_poe2_enabled(poe2_checkbox_var.get()))
-poe2_checkbox.pack(pady=2)
-
-button_key_frame = tk.Frame(main_tab)
-button_key_frame.pack()
-button_key_label = tk.Label(button_key_frame, text="Button")
-button_key_label.pack(side='left', padx=5)
-button_key = tk.Text(button_key_frame, height=1, width=5, bg="white")
-button_key.pack(side='left')
-
-button_delay_frame = tk.Frame(main_tab)
-button_delay_frame.pack()
-button_delay_label = tk.Label(button_delay_frame, text="Delay")
-button_delay_label.pack(side='left', padx=5)
-button_delay = tk.Text(button_delay_frame, height=1, width=5, bg="white")
-button_delay.pack(side='left')
-
-click_flask_button = tk.Button(main_tab, text="Start flask", command=run_loop_flask, width=20, height=5, padx=10,
-                               pady=10)
-click_flask_button.pack()
-
-weapon_key_frame = tk.Frame(main_tab)
-weapon_key_frame.pack(pady=(20, 0))
-weapon_key_label = tk.Label(weapon_key_frame, text="Button")
-weapon_key_label.pack(side='left', padx=5)
-weapon_key = tk.Text(weapon_key_frame, height=1, width=5, bg="white")
-weapon_key.pack(side='left')
-
-click_weapon_swap_button = tk.Button(main_tab, text="Start weapon swap", command=run_loop_weapon_swap, width=20,
-                                     height=5, padx=10, pady=10)
-click_weapon_swap_button.pack()
-
-tab_control.pack(expand=1, fill='both')
-root.attributes('-topmost', True)
-root.mainloop()
+    def run(self):
+        """Start the application"""
+        try:
+            self.root.mainloop()
+        except Exception as e:
+            print(f"Application error: {e}")
+        finally:
+            self.cleanup_and_close()
+if __name__ == "__main__":
+    app = PathOfExileHelper()
+    app.run()

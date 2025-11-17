@@ -1,0 +1,37 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install click flask ipython jinja2 jupyter matplotlib numpy pandas pillow protobuf psycopg2 pygame pyparsing pytz requests scipy seaborn six tornado werkzeug pywin32 keyboard pyautogui
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name PathOfExileHelper helper.py
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/PathOfExileHelper.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
