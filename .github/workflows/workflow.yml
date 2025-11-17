@@ -2,8 +2,12 @@ name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*' # Trigger on version tags
+    branches:
+      - main
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -14,7 +18,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: '3.9'
+        python-version: '3.8'
 
     - name: Install dependencies
       run: |
@@ -23,12 +27,18 @@ jobs:
 
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --name PathOfExileHelper helper.py
+        pyinstaller helper.spec
+
+    - name: Create Tag
+      id: create_tag
+      run: |
+        echo "TAG_NAME=v$(date +'%Y.%m.%d.%H%M')" >> $GITHUB_ENV
 
     - name: Create Release
       id: create_release
       uses: softprops/action-gh-release@v1
       with:
+        tag_name: ${{ env.TAG_NAME }}
         files: |
           dist/PathOfExileHelper.exe
       env:
