@@ -51,10 +51,12 @@ class PathOfExileHelper:
         self.weapon_swap_hotkey_entry: Optional[tk.Entry] = None
         self.flask_hotkey_hook_id: Optional[int] = None
         self.weapon_swap_hotkey_hook_id: Optional[int] = None
+        self.weapon_swap_a_key_hook_id: Optional[int] = None
         self.listening_for_flask_hotkey: bool = False
         self.listening_for_weapon_swap_hotkey: bool = False
         self.flask_hotkey_listener_callback = None
         self.weapon_swap_hotkey_listener_callback = None
+        self._cleaning_up = False
 
         self.setup_ui()
         # Register cleanup on window close
@@ -493,14 +495,19 @@ class PathOfExileHelper:
         self.weapon_swap_event.clear()
         self.click_weapon_swap_button['text'] = 'Stop weapon swap'
         self.weapon_key.config(state='disabled')
-        keyboard.on_press_key('a', self.execute_weapon_swap)
+        self.weapon_swap_a_key_hook_id = keyboard.on_press_key('a', self.execute_weapon_swap)
 
     def stop_weapon_swap(self):
         """Stop weapon swap and cleanup resources"""
         self.weapon_swap_event.set()
         self.click_weapon_swap_button['text'] = 'Start weapon swap'
         self.weapon_key.config(state='normal')
-        keyboard.unhook_key('a')
+        if self.weapon_swap_a_key_hook_id is not None:
+            try:
+                keyboard.unhook_key(self.weapon_swap_a_key_hook_id)
+            except:
+                pass
+            self.weapon_swap_a_key_hook_id = None
 
     def set_poe1_enabled(self, value: bool):
         """Set POE1 enabled state"""
@@ -512,33 +519,57 @@ class PathOfExileHelper:
 
     def cleanup_and_close(self):
         """Cleanup all resources before closing"""
-        print("Cleaning up resources...")
-        # Stop all running operations
-        self.stop_flask()
-        self.stop_weapon_swap()
-
-        # Stop listening for hotkeys
-        self.stop_listening_flask_hotkey()
-        self.stop_listening_weapon_swap_hotkey()
-
-        # Unhook hotkey hooks
-        if self.flask_hotkey_hook_id is not None:
-            try:
-                keyboard.unhook_key(self.flask_hotkey_hook_id)
-            except:
-                pass
+        if self._cleaning_up:
+            return
         
-        if self.weapon_swap_hotkey_hook_id is not None:
+        self._cleaning_up = True
+        print("Cleaning up resources...")
+        
+        try:
+            # Stop all running operations
+            self.stop_flask()
+            self.stop_weapon_swap()
+
+            # Stop listening for hotkeys
+            self.stop_listening_flask_hotkey()
+            self.stop_listening_weapon_swap_hotkey()
+
+            # Unhook hotkey hooks
+            if self.flask_hotkey_hook_id is not None:
+                try:
+                    keyboard.unhook_key(self.flask_hotkey_hook_id)
+                except:
+                    pass
+                self.flask_hotkey_hook_id = None
+            
+            if self.weapon_swap_hotkey_hook_id is not None:
+                try:
+                    keyboard.unhook_key(self.weapon_swap_hotkey_hook_id)
+                except:
+                    pass
+                self.weapon_swap_hotkey_hook_id = None
+
+            # Unhook weapon swap 'a' key if active
+            if self.weapon_swap_a_key_hook_id is not None:
+                try:
+                    keyboard.unhook_key(self.weapon_swap_a_key_hook_id)
+                except:
+                    pass
+                self.weapon_swap_a_key_hook_id = None
+
+            # Note: We skip keyboard.unhook_all() since we've already unhooked all our specific hooks
+            # Calling unhook_all() can sometimes block, and since we manage all hooks explicitly,
+            # it's not necessary. The OS will clean up any remaining hooks when the process exits.
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+        finally:
+            # Destroy all widgets
             try:
-                keyboard.unhook_key(self.weapon_swap_hotkey_hook_id)
+                if self.root.winfo_exists():
+                    self.root.quit()
+                    self.root.destroy()
             except:
                 pass
-
-        # Remove all keyboard hooks
-        keyboard.unhook_all()
-
-        # Destroy all widgets
-        self.root.destroy()
 
     def run(self):
         """Start the application"""
@@ -547,7 +578,9 @@ class PathOfExileHelper:
         except Exception as e:
             print(f"Application error: {e}")
         finally:
-            self.cleanup_and_close()
+            # Cleanup is handled by protocol handler, but ensure it runs if mainloop exits abnormally
+            if not self._cleaning_up:
+                self.cleanup_and_close()
 if __name__ == "__main__":
     app = PathOfExileHelper()
     app.run()
