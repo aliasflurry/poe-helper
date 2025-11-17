@@ -42,6 +42,19 @@ class PathOfExileHelper:
         self.weapon_key: Optional[tk.Text] = None
         self.click_flask_button: Optional[tk.Button] = None
         self.click_weapon_swap_button: Optional[tk.Button] = None
+        self.tab_control: Optional[ttk.Notebook] = None
+        
+        # Hotkey settings
+        self.flask_hotkey: str = ""
+        self.weapon_swap_hotkey: str = ""
+        self.flask_hotkey_entry: Optional[tk.Entry] = None
+        self.weapon_swap_hotkey_entry: Optional[tk.Entry] = None
+        self.flask_hotkey_hook_id: Optional[int] = None
+        self.weapon_swap_hotkey_hook_id: Optional[int] = None
+        self.listening_for_flask_hotkey: bool = False
+        self.listening_for_weapon_swap_hotkey: bool = False
+        self.flask_hotkey_listener_callback = None
+        self.weapon_swap_hotkey_listener_callback = None
 
         self.setup_ui()
         # Register cleanup on window close
@@ -49,9 +62,9 @@ class PathOfExileHelper:
 
     def setup_ui(self):
         """Initialize all UI elements"""
-        tab_control = ttk.Notebook(self.root)
-        main_tab = ttk.Frame(tab_control)
-        tab_control.add(main_tab, text='Main')
+        self.tab_control = ttk.Notebook(self.root)
+        main_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(main_tab, text='Main')
 
         # POE Version Checkboxes
         self.setup_poe_checkboxes(main_tab)
@@ -62,7 +75,12 @@ class PathOfExileHelper:
         # Weapon Swap Controls
         self.setup_weapon_swap_controls(main_tab)
 
-        tab_control.pack(expand=1, fill='both')
+        # Settings Tab
+        settings_tab = ttk.Frame(self.tab_control)
+        self.tab_control.add(settings_tab, text='Settings')
+        self.setup_hotkey_settings(settings_tab)
+
+        self.tab_control.pack(expand=1, fill='both')
         self.root.attributes('-topmost', True)
 
     def setup_poe_checkboxes(self, parent):
@@ -127,6 +145,242 @@ class PathOfExileHelper:
             pady=10
         )
         self.click_weapon_swap_button.pack()
+
+    def setup_hotkey_settings(self, parent):
+        """Setup hotkey configuration UI"""
+        # Flask Hotkey Section
+        flask_hotkey_frame = tk.Frame(parent)
+        flask_hotkey_frame.pack(pady=20, padx=20, fill='x')
+        
+        tk.Label(
+            flask_hotkey_frame,
+            text="Flask Toggle Hotkey:",
+            font=('Arial', 10, 'bold')
+        ).pack(anchor='w', pady=(0, 5))
+        
+        flask_input_frame = tk.Frame(flask_hotkey_frame)
+        flask_input_frame.pack(fill='x')
+        
+        self.flask_hotkey_entry = tk.Entry(flask_input_frame, width=20, state='readonly')
+        self.flask_hotkey_entry.pack(side='left', padx=5)
+        if self.flask_hotkey:
+            self.flask_hotkey_entry.config(state='normal')
+            self.flask_hotkey_entry.insert(0, self.flask_hotkey)
+            self.flask_hotkey_entry.config(state='readonly')
+        
+        self.flask_set_button = tk.Button(
+            flask_input_frame,
+            text="Set",
+            command=self.start_listening_flask_hotkey,
+            width=10
+        )
+        self.flask_set_button.pack(side='left', padx=5)
+        
+        tk.Button(
+            flask_input_frame,
+            text="Clear",
+            command=self.clear_flask_hotkey,
+            width=10
+        ).pack(side='left', padx=5)
+        
+        self.flask_status_label = tk.Label(
+            flask_hotkey_frame,
+            text="Click 'Set' and press a key to assign hotkey",
+            font=('Arial', 8),
+            fg='gray'
+        )
+        self.flask_status_label.pack(anchor='w', pady=(5, 0))
+        
+        # Weapon Swap Hotkey Section
+        weapon_swap_hotkey_frame = tk.Frame(parent)
+        weapon_swap_hotkey_frame.pack(pady=20, padx=20, fill='x')
+        
+        tk.Label(
+            weapon_swap_hotkey_frame,
+            text="Weapon Swap Toggle Hotkey:",
+            font=('Arial', 10, 'bold')
+        ).pack(anchor='w', pady=(0, 5))
+        
+        weapon_swap_input_frame = tk.Frame(weapon_swap_hotkey_frame)
+        weapon_swap_input_frame.pack(fill='x')
+        
+        self.weapon_swap_hotkey_entry = tk.Entry(weapon_swap_input_frame, width=20, state='readonly')
+        self.weapon_swap_hotkey_entry.pack(side='left', padx=5)
+        if self.weapon_swap_hotkey:
+            self.weapon_swap_hotkey_entry.config(state='normal')
+            self.weapon_swap_hotkey_entry.insert(0, self.weapon_swap_hotkey)
+            self.weapon_swap_hotkey_entry.config(state='readonly')
+        
+        self.weapon_swap_set_button = tk.Button(
+            weapon_swap_input_frame,
+            text="Set",
+            command=self.start_listening_weapon_swap_hotkey,
+            width=10
+        )
+        self.weapon_swap_set_button.pack(side='left', padx=5)
+        
+        tk.Button(
+            weapon_swap_input_frame,
+            text="Clear",
+            command=self.clear_weapon_swap_hotkey,
+            width=10
+        ).pack(side='left', padx=5)
+        
+        self.weapon_swap_status_label = tk.Label(
+            weapon_swap_hotkey_frame,
+            text="Click 'Set' and press a key to assign hotkey",
+            font=('Arial', 8),
+            fg='gray'
+        )
+        self.weapon_swap_status_label.pack(anchor='w', pady=(5, 0))
+
+    def start_listening_flask_hotkey(self):
+        """Start listening for flask hotkey"""
+        if self.listening_for_flask_hotkey:
+            self.stop_listening_flask_hotkey()
+            return
+        
+        self.listening_for_flask_hotkey = True
+        self.flask_set_button.config(text="Cancel", bg="red")
+        self.flask_status_label.config(text="Press any key to set hotkey...", fg='blue')
+        
+        def on_key_press(event):
+            if not self.listening_for_flask_hotkey:
+                return
+            
+            key_name = event.name.lower()
+            # Skip modifier keys alone
+            if key_name in ['shift', 'ctrl', 'alt', 'windows', 'cmd']:
+                return
+            
+            self.stop_listening_flask_hotkey()
+            self.flask_hotkey_entry.config(state='normal')
+            self.flask_hotkey_entry.delete(0, tk.END)
+            self.flask_hotkey_entry.insert(0, key_name)
+            self.flask_hotkey_entry.config(state='readonly')
+            self.update_flask_hotkey()
+            self.flask_status_label.config(text=f"Hotkey set to: {key_name}", fg='green')
+        
+        self.flask_hotkey_listener_callback = keyboard.hook(on_key_press)
+
+    def stop_listening_flask_hotkey(self):
+        """Stop listening for flask hotkey"""
+        self.listening_for_flask_hotkey = False
+        self.flask_set_button.config(text="Set", bg="SystemButtonFace")
+        if self.flask_hotkey_listener_callback is not None:
+            try:
+                self.flask_hotkey_listener_callback()
+            except:
+                pass
+            self.flask_hotkey_listener_callback = None
+
+    def start_listening_weapon_swap_hotkey(self):
+        """Start listening for weapon swap hotkey"""
+        if self.listening_for_weapon_swap_hotkey:
+            self.stop_listening_weapon_swap_hotkey()
+            return
+        
+        self.listening_for_weapon_swap_hotkey = True
+        self.weapon_swap_set_button.config(text="Cancel", bg="red")
+        self.weapon_swap_status_label.config(text="Press any key to set hotkey...", fg='blue')
+        
+        def on_key_press(event):
+            if not self.listening_for_weapon_swap_hotkey:
+                return
+            
+            key_name = event.name.lower()
+            # Skip modifier keys alone
+            if key_name in ['shift', 'ctrl', 'alt', 'windows', 'cmd']:
+                return
+            
+            self.stop_listening_weapon_swap_hotkey()
+            self.weapon_swap_hotkey_entry.config(state='normal')
+            self.weapon_swap_hotkey_entry.delete(0, tk.END)
+            self.weapon_swap_hotkey_entry.insert(0, key_name)
+            self.weapon_swap_hotkey_entry.config(state='readonly')
+            self.update_weapon_swap_hotkey()
+            self.weapon_swap_status_label.config(text=f"Hotkey set to: {key_name}", fg='green')
+        
+        self.weapon_swap_hotkey_listener_callback = keyboard.hook(on_key_press)
+
+    def stop_listening_weapon_swap_hotkey(self):
+        """Stop listening for weapon swap hotkey"""
+        self.listening_for_weapon_swap_hotkey = False
+        self.weapon_swap_set_button.config(text="Set", bg="SystemButtonFace")
+        if self.weapon_swap_hotkey_listener_callback is not None:
+            try:
+                self.weapon_swap_hotkey_listener_callback()
+            except:
+                pass
+            self.weapon_swap_hotkey_listener_callback = None
+
+    def update_flask_hotkey(self, event=None):
+        """Update flask hotkey binding"""
+        new_hotkey = self.flask_hotkey_entry.get().strip().lower()
+        
+        # Unhook old hotkey if exists
+        if self.flask_hotkey and self.flask_hotkey_hook_id is not None:
+            try:
+                keyboard.unhook_key(self.flask_hotkey_hook_id)
+            except:
+                pass
+            self.flask_hotkey_hook_id = None
+        
+        # Set new hotkey
+        self.flask_hotkey = new_hotkey
+        
+        # Hook new hotkey if not empty
+        if new_hotkey:
+            try:
+                self.flask_hotkey_hook_id = keyboard.on_press_key(
+                    new_hotkey,
+                    lambda e: self.toggle_flask()
+                )
+            except Exception as ex:
+                print(f"Error setting flask hotkey: {ex}")
+
+    def update_weapon_swap_hotkey(self, event=None):
+        """Update weapon swap hotkey binding"""
+        new_hotkey = self.weapon_swap_hotkey_entry.get().strip().lower()
+        
+        # Unhook old hotkey if exists
+        if self.weapon_swap_hotkey and self.weapon_swap_hotkey_hook_id is not None:
+            try:
+                keyboard.unhook_key(self.weapon_swap_hotkey_hook_id)
+            except:
+                pass
+            self.weapon_swap_hotkey_hook_id = None
+        
+        # Set new hotkey
+        self.weapon_swap_hotkey = new_hotkey
+        
+        # Hook new hotkey if not empty
+        if new_hotkey:
+            try:
+                self.weapon_swap_hotkey_hook_id = keyboard.on_press_key(
+                    new_hotkey,
+                    lambda e: self.toggle_weapon_swap()
+                )
+            except Exception as ex:
+                print(f"Error setting weapon swap hotkey: {ex}")
+
+    def clear_flask_hotkey(self):
+        """Clear flask hotkey"""
+        self.stop_listening_flask_hotkey()
+        self.flask_hotkey_entry.config(state='normal')
+        self.flask_hotkey_entry.delete(0, tk.END)
+        self.flask_hotkey_entry.config(state='readonly')
+        self.update_flask_hotkey()
+        self.flask_status_label.config(text="Hotkey cleared", fg='gray')
+
+    def clear_weapon_swap_hotkey(self):
+        """Clear weapon swap hotkey"""
+        self.stop_listening_weapon_swap_hotkey()
+        self.weapon_swap_hotkey_entry.config(state='normal')
+        self.weapon_swap_hotkey_entry.delete(0, tk.END)
+        self.weapon_swap_hotkey_entry.config(state='readonly')
+        self.update_weapon_swap_hotkey()
+        self.weapon_swap_status_label.config(text="Hotkey cleared", fg='gray')
 
     def get_root_window(self, hwnd):
         """Get the root window handle"""
@@ -262,6 +516,23 @@ class PathOfExileHelper:
         # Stop all running operations
         self.stop_flask()
         self.stop_weapon_swap()
+
+        # Stop listening for hotkeys
+        self.stop_listening_flask_hotkey()
+        self.stop_listening_weapon_swap_hotkey()
+
+        # Unhook hotkey hooks
+        if self.flask_hotkey_hook_id is not None:
+            try:
+                keyboard.unhook_key(self.flask_hotkey_hook_id)
+            except:
+                pass
+        
+        if self.weapon_swap_hotkey_hook_id is not None:
+            try:
+                keyboard.unhook_key(self.weapon_swap_hotkey_hook_id)
+            except:
+                pass
 
         # Remove all keyboard hooks
         keyboard.unhook_all()
