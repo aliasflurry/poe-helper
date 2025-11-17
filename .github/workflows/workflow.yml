@@ -33,7 +33,18 @@ jobs:
     - name: Create Tag
       id: create_tag
       run: |
-        echo "TAG_NAME=v$(date +'%Y.%m.%d.%H%M')" >> $GITHUB_ENV
+        $tagName = "v$(Get-Date -Format 'yyyy.MM.dd.HHmm')"
+        "TAG_NAME=$tagName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        Write-Host "Created tag: $tagName"
+        Write-Host "Tag name will be: $tagName"
+
+    - name: Verify Tag Name
+      run: |
+        Write-Host "TAG_NAME environment variable: $env:TAG_NAME"
+        if (-not $env:TAG_NAME) {
+          Write-Error "TAG_NAME is not set!"
+          exit 1
+        }
 
     - name: Create Release
       id: create_release
