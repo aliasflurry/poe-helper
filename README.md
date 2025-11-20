@@ -1,1 +1,1 @@
-pyinstaller --onefile -w helper.py
+pyinstaller .\helper.spec
