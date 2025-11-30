@@ -37,7 +37,7 @@ class WeaponSwap:
         # State variables
         self.weapon_swap_event = Event()
         self.weapon_swap_hotkey: str = ""
-        self.weapon_swap_hotkey_hook_id: Optional[int] = None
+        self.weapon_swap_hotkey_hook_ids: list = []  # List to store multiple hook IDs
         self.weapon_swap_a_key_hook_id: Optional[int] = None
         self.listening_for_weapon_swap_hotkey: bool = False
         self.weapon_swap_hotkey_listener_callback = None
@@ -89,24 +89,41 @@ class WeaponSwap:
         
         self.listening_for_weapon_swap_hotkey = True
         self.weapon_swap_set_button.config(text="Cancel", bg="red")
-        self.weapon_swap_status_label.config(text="Press any key to set hotkey...", fg='blue')
+        self.weapon_swap_status_label.config(text="Press any key (or Ctrl+key) to set hotkey...", fg='blue')
         
         def on_key_press(event):
             if not self.listening_for_weapon_swap_hotkey:
                 return
             
             key_name = event.name.lower()
-            # Skip modifier keys alone
-            if key_name in ['shift', 'ctrl', 'alt', 'windows', 'cmd']:
+            
+            # Track Ctrl key state
+            if key_name == 'ctrl' or key_name == 'ctrl left' or key_name == 'ctrl right':
                 return
+            
+            # Skip other modifier keys alone
+            if key_name in ['shift', 'alt', 'windows', 'cmd']:
+                return
+            
+            # Check if Ctrl is currently held (using 'ctrl' works for both left and right)
+            try:
+                is_ctrl_held = keyboard.is_pressed('ctrl')
+            except:
+                is_ctrl_held = False
+            
+            # Format hotkey string
+            if is_ctrl_held:
+                hotkey_str = f"ctrl+{key_name}"
+            else:
+                hotkey_str = key_name
             
             self.stop_listening_weapon_swap_hotkey()
             self.weapon_swap_hotkey_entry.config(state='normal')
             self.weapon_swap_hotkey_entry.delete(0, tk.END)
-            self.weapon_swap_hotkey_entry.insert(0, key_name)
+            self.weapon_swap_hotkey_entry.insert(0, hotkey_str)
             self.weapon_swap_hotkey_entry.config(state='readonly')
             self.update_weapon_swap_hotkey()
-            self.weapon_swap_status_label.config(text=f"Hotkey set to: {key_name}", fg='green')
+            self.weapon_swap_status_label.config(text=f"Hotkey set to: {hotkey_str}", fg='green')
             if self.save_callback:
                 self.save_callback()
         
@@ -124,16 +141,20 @@ class WeaponSwap:
             self.weapon_swap_hotkey_listener_callback = None
 
     def update_weapon_swap_hotkey(self, event=None):
-        """Update weapon swap hotkey binding"""
+        """Update weapon swap hotkey binding - registers both normal key and Ctrl+key"""
         new_hotkey = self.weapon_swap_hotkey_entry.get().strip().lower()
         
-        # Unhook old hotkey if exists
-        if self.weapon_swap_hotkey and self.weapon_swap_hotkey_hook_id is not None:
+        # Unhook old hotkeys if they exist
+        for hook_id in self.weapon_swap_hotkey_hook_ids:
             try:
-                keyboard.unhook_key(self.weapon_swap_hotkey_hook_id)
+                # add_hotkey returns a callback function, on_press_key returns an int
+                if callable(hook_id):
+                    hook_id()  # Call the callback to remove the hotkey
+                else:
+                    keyboard.unhook_key(hook_id)
             except:
                 pass
-            self.weapon_swap_hotkey_hook_id = None
+        self.weapon_swap_hotkey_hook_ids = []
         
         # Set new hotkey
         self.weapon_swap_hotkey = new_hotkey
@@ -141,10 +162,27 @@ class WeaponSwap:
         # Hook new hotkey if not empty
         if new_hotkey:
             try:
-                self.weapon_swap_hotkey_hook_id = keyboard.on_press_key(
-                    new_hotkey,
-                    lambda e: self.toggle_weapon_swap()
-                )
+                # If it's already a combination, register it directly
+                if '+' in new_hotkey:
+                    # Register the combination directly
+                    try:
+                        hook_id = keyboard.add_hotkey(
+                            new_hotkey,
+                            self.toggle_weapon_swap
+                        )
+                        self.weapon_swap_hotkey_hook_ids.append(hook_id)
+                    except Exception as ex:
+                        print(f"Error setting weapon swap hotkey (combination): {ex}")
+                else:
+                    # For single keys, register only the key
+                    try:
+                        hook_id = keyboard.on_press_key(
+                            new_hotkey,
+                            lambda e: self.toggle_weapon_swap()
+                        )
+                        self.weapon_swap_hotkey_hook_ids.append(hook_id)
+                    except Exception as ex:
+                        print(f"Error setting weapon swap hotkey: {ex}")
             except Exception as ex:
                 print(f"Error setting weapon swap hotkey: {ex}")
 
@@ -164,12 +202,17 @@ class WeaponSwap:
         self.stop_weapon_swap()
         self.stop_listening_weapon_swap_hotkey()
         
-        if self.weapon_swap_hotkey_hook_id is not None:
+        # Unhook all hotkeys
+        for hook_id in self.weapon_swap_hotkey_hook_ids:
             try:
-                keyboard.unhook_key(self.weapon_swap_hotkey_hook_id)
+                # add_hotkey returns a callback function, on_press_key returns an int
+                if callable(hook_id):
+                    hook_id()  # Call the callback to remove the hotkey
+                else:
+                    keyboard.unhook_key(hook_id)
             except:
                 pass
-            self.weapon_swap_hotkey_hook_id = None
+        self.weapon_swap_hotkey_hook_ids = []
         
         if self.weapon_swap_a_key_hook_id is not None:
             try:

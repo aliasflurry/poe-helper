@@ -49,7 +49,7 @@ class Flask:
         self.flask_event = Event()
         self.flask_thread: Optional[threading.Thread] = None
         self.flask_hotkey: str = ""
-        self.flask_hotkey_hook_id: Optional[int] = None
+        self.flask_hotkey_hook_ids: list = []  # List to store multiple hook IDs
         self.listening_for_flask_hotkey: bool = False
         self.flask_hotkey_listener_callback = None
     
@@ -112,24 +112,41 @@ class Flask:
         
         self.listening_for_flask_hotkey = True
         self.flask_set_button.config(text="Cancel", bg="red")
-        self.flask_status_label.config(text="Press any key to set hotkey...", fg='blue')
+        self.flask_status_label.config(text="Press any key (or Ctrl+key) to set hotkey...", fg='blue')
         
         def on_key_press(event):
             if not self.listening_for_flask_hotkey:
                 return
             
             key_name = event.name.lower()
-            # Skip modifier keys alone
-            if key_name in ['shift', 'ctrl', 'alt', 'windows', 'cmd']:
+            
+            # Track Ctrl key state
+            if key_name == 'ctrl' or key_name == 'ctrl left' or key_name == 'ctrl right':
                 return
+            
+            # Skip other modifier keys alone
+            if key_name in ['shift', 'alt', 'windows', 'cmd']:
+                return
+            
+            # Check if Ctrl is currently held (using 'ctrl' works for both left and right)
+            try:
+                is_ctrl_held = keyboard.is_pressed('ctrl')
+            except:
+                is_ctrl_held = False
+            
+            # Format hotkey string
+            if is_ctrl_held:
+                hotkey_str = f"ctrl+{key_name}"
+            else:
+                hotkey_str = key_name
             
             self.stop_listening_flask_hotkey()
             self.flask_hotkey_entry.config(state='normal')
             self.flask_hotkey_entry.delete(0, tk.END)
-            self.flask_hotkey_entry.insert(0, key_name)
+            self.flask_hotkey_entry.insert(0, hotkey_str)
             self.flask_hotkey_entry.config(state='readonly')
             self.update_flask_hotkey()
-            self.flask_status_label.config(text=f"Hotkey set to: {key_name}", fg='green')
+            self.flask_status_label.config(text=f"Hotkey set to: {hotkey_str}", fg='green')
             if self.save_callback:
                 self.save_callback()
         
@@ -147,16 +164,20 @@ class Flask:
             self.flask_hotkey_listener_callback = None
 
     def update_flask_hotkey(self, event=None):
-        """Update flask hotkey binding"""
+        """Update flask hotkey binding - registers both normal key and Ctrl+key"""
         new_hotkey = self.flask_hotkey_entry.get().strip().lower()
         
-        # Unhook old hotkey if exists
-        if self.flask_hotkey and self.flask_hotkey_hook_id is not None:
+        # Unhook old hotkeys if they exist
+        for hook_id in self.flask_hotkey_hook_ids:
             try:
-                keyboard.unhook_key(self.flask_hotkey_hook_id)
+                # add_hotkey returns a callback function, on_press_key returns an int
+                if callable(hook_id):
+                    hook_id()  # Call the callback to remove the hotkey
+                else:
+                    keyboard.unhook_key(hook_id)
             except:
                 pass
-            self.flask_hotkey_hook_id = None
+        self.flask_hotkey_hook_ids = []
         
         # Set new hotkey
         self.flask_hotkey = new_hotkey
@@ -164,10 +185,27 @@ class Flask:
         # Hook new hotkey if not empty
         if new_hotkey:
             try:
-                self.flask_hotkey_hook_id = keyboard.on_press_key(
-                    new_hotkey,
-                    lambda e: self.toggle_flask()
-                )
+                # If it's already a combination, register it directly
+                if '+' in new_hotkey:
+                    # Register the combination directly
+                    try:
+                        hook_id = keyboard.add_hotkey(
+                            new_hotkey,
+                            self.toggle_flask
+                        )
+                        self.flask_hotkey_hook_ids.append(hook_id)
+                    except Exception as ex:
+                        print(f"Error setting flask hotkey (combination): {ex}")
+                else:
+                    # For single keys, register only the key
+                    try:
+                        hook_id = keyboard.on_press_key(
+                            new_hotkey,
+                            lambda e: self.toggle_flask()
+                        )
+                        self.flask_hotkey_hook_ids.append(hook_id)
+                    except Exception as ex:
+                        print(f"Error setting flask hotkey: {ex}")
             except Exception as ex:
                 print(f"Error setting flask hotkey: {ex}")
 
@@ -187,10 +225,15 @@ class Flask:
         self.stop_flask()
         self.stop_listening_flask_hotkey()
         
-        if self.flask_hotkey_hook_id is not None:
+        # Unhook all hotkeys
+        for hook_id in self.flask_hotkey_hook_ids:
             try:
-                keyboard.unhook_key(self.flask_hotkey_hook_id)
+                # add_hotkey returns a callback function, on_press_key returns an int
+                if callable(hook_id):
+                    hook_id()  # Call the callback to remove the hotkey
+                else:
+                    keyboard.unhook_key(hook_id)
             except:
                 pass
-            self.flask_hotkey_hook_id = None
+        self.flask_hotkey_hook_ids = []
 

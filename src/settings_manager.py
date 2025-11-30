@@ -10,7 +10,7 @@ class SettingsManager:
     def __init__(self, settings_file: str = "settings.json"):
         self.settings_file = settings_file
     
-    def save_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None):
+    def save_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None, map_anoint_hotkey: Optional[tk.Entry] = None, dump_items_hotkey: Optional[tk.Entry] = None, dump_items_coords: Optional[dict] = None):
         """Save text box values to settings file"""
         try:
             button_key_value = ""
@@ -18,6 +18,9 @@ class SettingsManager:
             weapon_key_value = ""
             flask_hotkey_value = ""
             weapon_swap_hotkey_value = ""
+            map_anoint_hotkey_value = ""
+            dump_items_hotkey_value = ""
+            dump_items_coords_value = None
             
             if button_key:
                 button_key_value = button_key.get(1.0, "end-1c").strip()
@@ -29,20 +32,29 @@ class SettingsManager:
                 flask_hotkey_value = flask_hotkey.get().strip()
             if weapon_swap_hotkey:
                 weapon_swap_hotkey_value = weapon_swap_hotkey.get().strip()
+            if map_anoint_hotkey:
+                map_anoint_hotkey_value = map_anoint_hotkey.get().strip()
+            if dump_items_hotkey:
+                dump_items_hotkey_value = dump_items_hotkey.get().strip()
+            if dump_items_coords is not None:
+                dump_items_coords_value = dump_items_coords
             
             settings = {
                 "button_key": button_key_value,
                 "button_delay": button_delay_value,
                 "weapon_key": weapon_key_value,
                 "flask_hotkey": flask_hotkey_value,
-                "weapon_swap_hotkey": weapon_swap_hotkey_value
+                "weapon_swap_hotkey": weapon_swap_hotkey_value,
+                "map_anoint_hotkey": map_anoint_hotkey_value,
+                "dump_items_hotkey": dump_items_hotkey_value,
+                "dump_items_coords": dump_items_coords_value
             }
             with open(self.settings_file, 'w') as f:
                 json.dump(settings, f, indent=2)
         except Exception as e:
             print(f"Error saving settings: {e}")
     
-    def load_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None):
+    def load_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None, map_anoint_hotkey: Optional[tk.Entry] = None, dump_items_hotkey: Optional[tk.Entry] = None):
         """Load text box values from settings file"""
         try:
             if os.path.exists(self.settings_file):
@@ -67,6 +79,22 @@ class SettingsManager:
                         weapon_swap_hotkey.delete(0, tk.END)
                         weapon_swap_hotkey.insert(0, settings["weapon_swap_hotkey"])
                         weapon_swap_hotkey.config(state='readonly')
+                    if "map_anoint_hotkey" in settings and map_anoint_hotkey:
+                        map_anoint_hotkey.config(state='normal')
+                        map_anoint_hotkey.delete(0, tk.END)
+                        map_anoint_hotkey.insert(0, settings["map_anoint_hotkey"])
+                        map_anoint_hotkey.config(state='readonly')
+                    if "dump_items_hotkey" in settings and dump_items_hotkey:
+                        dump_items_hotkey.config(state='normal')
+                        dump_items_hotkey.delete(0, tk.END)
+                        dump_items_hotkey.insert(0, settings["dump_items_hotkey"])
+                        dump_items_hotkey.config(state='readonly')
+                    
+                    # Return dump_items_coords if it exists
+                    if "dump_items_coords" in settings:
+                        return settings["dump_items_coords"]
         except Exception as e:
             print(f"Error loading settings: {e}")
+        
+        return None
 
