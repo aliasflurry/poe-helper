@@ -33,32 +33,21 @@ jobs:
       run: 
         python -m PyInstaller helper.spec
 
-    - name: Create Tag
-      id: create_tag
+    - name: Get Current Tag
+      id: get_tag
       run: |
-        # Get the latest git tag
-        $latestTagOutput = git describe --tags --abbrev=0 2>&1
-        if ($LASTEXITCODE -eq 0 -and $latestTagOutput) {
-          $latestTag = $latestTagOutput.Trim()
-          Write-Host "Latest git tag: $latestTag"
+        # Get the tag that triggered this workflow
+        $tagRef = "${{ github.ref }}"
+        if ($tagRef -match '^refs/tags/(.+)$') {
+          $tagName = $matches[1]
+          Write-Host "Current tag: $tagName"
         } else {
-          $latestTag = ""
-          Write-Host "No existing tags found, starting fresh"
-        }
-        
-        # Generate timestamp-based tag name
-        $timestampTag = "v$(Get-Date -Format 'yyyy.MM.dd.HHmm')"
-        
-        # Prepend git tag if it exists
-        if ($latestTag) {
-          $tagName = "$latestTag-$timestampTag"
-        } else {
-          $tagName = $timestampTag
+          Write-Error "Unable to extract tag from ref: $tagRef"
+          exit 1
         }
         
         "TAG_NAME=$tagName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-        Write-Host "Created tag: $tagName"
-        Write-Host "Tag name will be: $tagName"
+        Write-Host "Using tag: $tagName"
 
     - name: Verify Tag Name
       run: |
