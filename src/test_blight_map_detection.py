@@ -233,7 +233,6 @@ def visualize_detections(image_path: str, detected_maps: List[Tuple[int, int, in
     """
     try:
         import cv2
-        import numpy as np
         
         # Load the image
         image = cv2.imread(image_path)

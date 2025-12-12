@@ -1,19 +1,15 @@
-import subprocess
 import tkinter as tk
 import tkinter.ttk as ttk
-
-import darkdetect
-import psutil
-import pyautogui
-import keyboard
-import win32process
 from typing import Optional
-from threading import Event
-from settings_manager import SettingsManager
-from weapon_swap import WeaponSwap
+
+import psutil
+import win32process
+
+from dump_items import DumpItems
 from flask import Flask
 from map_anoint import MapAnoint
-from dump_items import DumpItems
+from settings_manager import SettingsManager
+from weapon_swap import WeaponSwap
 
 try:
     import win32gui

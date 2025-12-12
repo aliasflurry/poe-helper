@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 try:
     import cv2
     import numpy as np
-    from PIL import Image
     IMAGE_PROCESSING_AVAILABLE = True
 except ImportError:
     IMAGE_PROCESSING_AVAILABLE = False

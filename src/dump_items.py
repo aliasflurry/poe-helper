@@ -2,7 +2,6 @@ import tkinter as tk
 import pyautogui
 import time
 import keyboard
-import threading
 from typing import Optional
 from threading import Event
 
@@ -217,7 +216,7 @@ class DumpItems:
         print("Press ESC to stop clicking\n")
         
         # Flag to track if Esc was pressed
-        esc_pressed = threading.Event()
+        esc_pressed = Event()
         unhook_callback = None
         
         # Set up Esc key listener
