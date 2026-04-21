@@ -19,7 +19,9 @@ class Flask:
                  is_path_of_exile_active_callback,
                  flask_min: int = 8,
                  flask_max: int = 9,
-                 save_callback=None):
+                 save_callback=None,
+                 on_flask_started=None,
+                 on_flask_stopped=None):
         """
         Initialize flask manager
         
@@ -44,6 +46,8 @@ class Flask:
         self.FLASK_MIN = flask_min
         self.FLASK_MAX = flask_max
         self.save_callback = save_callback
+        self.on_flask_started = on_flask_started
+        self.on_flask_stopped = on_flask_stopped
         
         # State variables
         self.flask_event = Event()
@@ -92,6 +96,8 @@ class Flask:
         self.click_flask_button['text'] = 'Stop flask'
         self.button_key.config(state='disabled')
         self.button_delay.config(state='disabled')
+        if self.on_flask_started:
+            self.on_flask_started()
 
         self.flask_thread = threading.Thread(target=self.flask_loop)
         self.flask_thread.daemon = True
@@ -103,6 +109,8 @@ class Flask:
         self.click_flask_button['text'] = 'Start flask'
         self.button_key.config(state='normal')
         self.button_delay.config(state='normal')
+        if self.on_flask_stopped:
+            self.on_flask_stopped()
 
     def start_listening_flask_hotkey(self):
         """Start listening for flask hotkey"""
