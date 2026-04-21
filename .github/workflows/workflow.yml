@@ -2,8 +2,8 @@ name: Build and Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - '*'
 
 permissions:
   contents: write
@@ -36,15 +36,14 @@ jobs:
     - name: Get Current Tag
       id: get_tag
       run: |
-        # Use the pushed tag directly, or create a unique tag name for branch runs.
-        $ref = "${{ github.ref }}"
-        if ($ref -match '^refs/tags/(.+)$') {
+        # Get the tag that triggered this workflow
+        $tagRef = "${{ github.ref }}"
+        if ($tagRef -match '^refs/tags/(.+)$') {
           $tagName = $matches[1]
-          Write-Host "Triggered by tag: $tagName"
+          Write-Host "Current tag: $tagName"
         } else {
-          $shortSha = "${{ github.sha }}".Substring(0, 7)
-          $tagName = "main-${{ github.run_number }}-$shortSha"
-          Write-Host "Triggered by branch ref ($ref). Using generated tag: $tagName"
+          Write-Error "Unable to extract tag from ref: $tagRef"
+          exit 1
         }
         
         "TAG_NAME=$tagName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
