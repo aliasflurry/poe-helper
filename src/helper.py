@@ -1,9 +1,11 @@
 import tkinter as tk
 import tkinter.ttk as ttk
+import ctypes
 from typing import Optional
 
 import psutil
 import win32process
+from PIL import Image, ImageDraw, ImageTk
 
 from dump_items import DumpItems
 from flask import Flask
@@ -20,6 +22,7 @@ except ImportError:
 
 class PathOfExileHelper:
     def __init__(self):
+        self._set_windows_app_user_model_id()
         self.root = tk.Tk("PGame Helper")
         self.root.geometry("600x650")
 
@@ -63,10 +66,14 @@ class PathOfExileHelper:
         self.dump_items_set_button: Optional[tk.Button] = None
         self.dump_items_status_label: Optional[tk.Label] = None
         self.dump_items_coords_button: Optional[tk.Button] = None
+        self._status_icon_images = {}
+        self._current_status_icon: Optional[ImageTk.PhotoImage] = None
         
         self._cleaning_up = False
 
         self.setup_ui()
+        self._create_status_icon_images()
+        self._set_status_icon("stopped")
         
         # Initialize flask manager after UI is set up
         self.flask = Flask(
@@ -79,7 +86,9 @@ class PathOfExileHelper:
             self.is_path_of_exile_active,
             self.FLASK_MIN,
             self.FLASK_MAX,
-            save_callback=lambda: self.save_all_settings()
+            save_callback=lambda: self.save_all_settings(),
+            on_flask_started=lambda: self._set_status_icon("running"),
+            on_flask_stopped=lambda: self._set_status_icon("stopped")
         )
         # Update button commands now that flask is initialized
         self.click_flask_button.config(command=self.flask.toggle_flask)
@@ -475,6 +484,42 @@ class PathOfExileHelper:
             width=20
         )
         self.dump_items_coords_button.pack()
+
+    def _build_status_icon(self, dot_color: str) -> ImageTk.PhotoImage:
+        """Build app icon with top-right status dot."""
+        icon_size = 32
+        icon = Image.new("RGBA", (icon_size, icon_size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(icon)
+
+        # Base icon shape
+        draw.rounded_rectangle((3, 3, 29, 29), radius=6, fill=(38, 44, 58, 255))
+        draw.rounded_rectangle((8, 8, 24, 24), radius=4, fill=(76, 86, 106, 255))
+
+        # Status indicator in the top-right corner
+        draw.ellipse((20, 2, 30, 12), fill=dot_color, outline=(240, 240, 240, 255), width=1)
+        return ImageTk.PhotoImage(icon)
+
+    def _set_windows_app_user_model_id(self):
+        """Set explicit app id so Windows taskbar uses this app icon."""
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("PGameHelper.Taskbar")
+        except Exception:
+            pass
+
+    def _create_status_icon_images(self):
+        """Create status icon variants once and keep references."""
+        self._status_icon_images["stopped"] = self._build_status_icon("#d32f2f")
+        self._status_icon_images["running"] = self._build_status_icon("#2e7d32")
+
+    def _set_status_icon(self, state: str):
+        """Apply icon to title bar/taskbar."""
+        icon = self._status_icon_images.get(state) or self._status_icon_images.get("stopped")
+        if icon is None:
+            return
+        self._current_status_icon = icon
+        self.root.iconphoto(True, self._current_status_icon)
+        self.root.wm_iconphoto(True, self._current_status_icon)
+        self.root.update_idletasks()
 
 
     def get_root_window(self, hwnd):
