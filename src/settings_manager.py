@@ -10,7 +10,7 @@ class SettingsManager:
     def __init__(self, settings_file: str = "settings.json"):
         self.settings_file = settings_file
     
-    def save_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None, map_anoint_hotkey: Optional[tk.Entry] = None, dump_items_hotkey: Optional[tk.Entry] = None, dump_items_coords: Optional[dict] = None):
+    def save_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None, map_anoint_hotkey: Optional[tk.Entry] = None, dump_items_hotkey: Optional[tk.Entry] = None, dump_items_coords: Optional[dict] = None, key_combo_trigger_key: Optional[tk.Text] = None, key_combo_keys: Optional[tk.Text] = None):
         """Save text box values to settings file"""
         try:
             button_key_value = ""
@@ -21,6 +21,8 @@ class SettingsManager:
             map_anoint_hotkey_value = ""
             dump_items_hotkey_value = ""
             dump_items_coords_value = None
+            key_combo_trigger_key_value = ""
+            key_combo_keys_value = ""
             
             if button_key:
                 button_key_value = button_key.get(1.0, "end-1c").strip()
@@ -38,6 +40,10 @@ class SettingsManager:
                 dump_items_hotkey_value = dump_items_hotkey.get().strip()
             if dump_items_coords is not None:
                 dump_items_coords_value = dump_items_coords
+            if key_combo_trigger_key:
+                key_combo_trigger_key_value = key_combo_trigger_key.get(1.0, "end-1c").strip()
+            if key_combo_keys:
+                key_combo_keys_value = key_combo_keys.get(1.0, "end-1c").strip()
             
             settings = {
                 "button_key": button_key_value,
@@ -47,14 +53,16 @@ class SettingsManager:
                 "weapon_swap_hotkey": weapon_swap_hotkey_value,
                 "map_anoint_hotkey": map_anoint_hotkey_value,
                 "dump_items_hotkey": dump_items_hotkey_value,
-                "dump_items_coords": dump_items_coords_value
+                "dump_items_coords": dump_items_coords_value,
+                "key_combo_trigger_key": key_combo_trigger_key_value,
+                "key_combo_keys": key_combo_keys_value
             }
             with open(self.settings_file, 'w') as f:
                 json.dump(settings, f, indent=2)
         except Exception as e:
             print(f"Error saving settings: {e}")
     
-    def load_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None, map_anoint_hotkey: Optional[tk.Entry] = None, dump_items_hotkey: Optional[tk.Entry] = None):
+    def load_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None, map_anoint_hotkey: Optional[tk.Entry] = None, dump_items_hotkey: Optional[tk.Entry] = None, key_combo_trigger_key: Optional[tk.Text] = None, key_combo_keys: Optional[tk.Text] = None):
         """Load text box values from settings file"""
         try:
             if os.path.exists(self.settings_file):
@@ -89,6 +97,12 @@ class SettingsManager:
                         dump_items_hotkey.delete(0, tk.END)
                         dump_items_hotkey.insert(0, settings["dump_items_hotkey"])
                         dump_items_hotkey.config(state='readonly')
+                    if "key_combo_trigger_key" in settings and key_combo_trigger_key:
+                        key_combo_trigger_key.delete(1.0, tk.END)
+                        key_combo_trigger_key.insert(1.0, settings["key_combo_trigger_key"])
+                    if "key_combo_keys" in settings and key_combo_keys:
+                        key_combo_keys.delete(1.0, tk.END)
+                        key_combo_keys.insert(1.0, settings["key_combo_keys"])
                     
                     # Return dump_items_coords if it exists
                     if "dump_items_coords" in settings:
