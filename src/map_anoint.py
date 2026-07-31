@@ -131,7 +131,7 @@ class MapAnoint:
             return
         
         self.listening_for_map_anoint_hotkey = True
-        self.map_anoint_set_button.config(text="Cancel", bg="red")
+        self.map_anoint_set_button.config(text="Cancel", bg="#dc2626", fg="white")
         self.map_anoint_status_label.config(text="Press any key (or Ctrl+key) to set hotkey...", fg='blue')
         
         def on_key_press(event):
@@ -175,7 +175,7 @@ class MapAnoint:
     def stop_listening_map_anoint_hotkey(self):
         """Stop listening for map anoint hotkey"""
         self.listening_for_map_anoint_hotkey = False
-        self.map_anoint_set_button.config(text="Set", bg="SystemButtonFace")
+        self.map_anoint_set_button.config(text="Set", bg="#e8f0fe", fg="#174ea6")
         if self.map_anoint_hotkey_listener_callback is not None:
             try:
                 self.map_anoint_hotkey_listener_callback()

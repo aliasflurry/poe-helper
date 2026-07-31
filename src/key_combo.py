@@ -43,7 +43,7 @@ class KeyCombo:
 
     def toggle_key_combo(self):
         """Toggle key combo binding."""
-        if self.click_key_combo_button["text"] == "Start key combo":
+        if self.click_key_combo_button["text"] == "Start key bind":
             self.start_key_combo()
         else:
             self.stop_key_combo()
@@ -59,7 +59,7 @@ class KeyCombo:
             self.stop_key_combo()
 
         self.key_combo_event.clear()
-        self.click_key_combo_button["text"] = "Stop key combo"
+        self.click_key_combo_button["text"] = "Stop key bind"
         self.trigger_key.config(state="disabled")
         self.combo_keys.config(state="disabled")
         self.key_combo_hook_id = keyboard.on_press_key(trigger, self.execute_key_combo)
@@ -67,7 +67,7 @@ class KeyCombo:
     def stop_key_combo(self):
         """Stop key combo binding and cleanup resources."""
         self.key_combo_event.set()
-        self.click_key_combo_button["text"] = "Start key combo"
+        self.click_key_combo_button["text"] = "Start key bind"
         self.trigger_key.config(state="normal")
         self.combo_keys.config(state="normal")
         if self.key_combo_hook_id is not None:

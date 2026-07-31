@@ -8,7 +8,15 @@ class SettingsManager:
     """Manages saving and loading of application settings"""
     
     def __init__(self, settings_file: str = "settings.json"):
-        self.settings_file = settings_file
+        if os.path.isabs(settings_file):
+            self.settings_file = settings_file
+        else:
+            app_data_dir = os.path.join(
+                os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+                "PGameHelper"
+            )
+            os.makedirs(app_data_dir, exist_ok=True)
+            self.settings_file = os.path.join(app_data_dir, settings_file)
     
     def save_settings(self, button_key: Optional[tk.Text], button_delay: Optional[tk.Text], weapon_key: Optional[tk.Text] = None, flask_hotkey: Optional[tk.Entry] = None, weapon_swap_hotkey: Optional[tk.Entry] = None, map_anoint_hotkey: Optional[tk.Entry] = None, dump_items_hotkey: Optional[tk.Entry] = None, dump_items_coords: Optional[dict] = None, key_combo_trigger_key: Optional[tk.Text] = None, key_combo_keys: Optional[tk.Text] = None):
         """Save text box values to settings file"""

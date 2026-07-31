@@ -1,19 +1,23 @@
 import tkinter as tk
 import tkinter.ttk as ttk
+from tkinter import messagebox
 import ctypes
 import os
 import tempfile
+import webbrowser
 from typing import Optional
 
 import psutil
 import win32process
 from PIL import Image, ImageDraw, ImageTk
 
+from app_config import APP_NAME, APP_VERSION
 from dump_items import DumpItems
 from flask import Flask
 from key_combo import KeyCombo
 from map_anoint import MapAnoint
 from settings_manager import SettingsManager
+from updater import check_for_update_async
 from weapon_swap import WeaponSwap
 
 try:
@@ -43,8 +47,10 @@ class GUID(ctypes.Structure):
 
 class PathOfExileHelper:
     def __init__(self):
-        self.root = tk.Tk("PGame Helper")
-        self.root.geometry("600x650")
+        self.root = tk.Tk()
+        self.root.title(f"{APP_NAME} {APP_VERSION}")
+        self.root.geometry("680x600")
+        self.root.minsize(620, 560)
 
         # Settings manager
         self.settings_manager = SettingsManager("settings.json")
@@ -54,6 +60,8 @@ class PathOfExileHelper:
         # State variables
         self.poe1_enabled = True
         self.poe2_enabled = True
+        self.poe1_checkbox_var: Optional[tk.BooleanVar] = None
+        self.poe2_checkbox_var: Optional[tk.BooleanVar] = None
 
         # Constants
         self.FLASK_MIN = 8
@@ -89,6 +97,8 @@ class PathOfExileHelper:
         self.dump_items_set_button: Optional[tk.Button] = None
         self.dump_items_status_label: Optional[tk.Label] = None
         self.dump_items_coords_button: Optional[tk.Button] = None
+        self.update_status_label: Optional[tk.Label] = None
+        self.check_updates_button: Optional[tk.Button] = None
         self._status_icon_images = {}
         self._current_status_icon: Optional[ImageTk.PhotoImage] = None
         self._status_icon_paths = {}
@@ -196,6 +206,7 @@ class PathOfExileHelper:
             self.dump_items.set_coords_from_dict(dump_items_coords)
         # Register cleanup on window close
         self.root.protocol("WM_DELETE_WINDOW", self.cleanup_and_close)
+        self.root.after(1500, lambda: self.check_for_updates(manual=False))
     
     def _toggle_flask_wrapper(self):
         """Wrapper for toggle_flask (used before flask is initialized)"""
@@ -264,309 +275,359 @@ class PathOfExileHelper:
 
     def setup_ui(self):
         """Initialize all UI elements"""
-        self.tab_control = ttk.Notebook(self.root)
-        main_tab = ttk.Frame(self.tab_control)
-        self.tab_control.add(main_tab, text='Main')
+        self._configure_theme()
+        self.root.configure(bg="#f4f6f8")
 
-        # POE Version Checkboxes
-        self.setup_poe_checkboxes(main_tab)
+        app_shell = tk.Frame(self.root, bg="#f4f6f8")
+        app_shell.pack(fill="both", expand=True, padx=18, pady=16)
 
-        # Flask Controls
-        self.setup_flask_controls(main_tab)
+        header = tk.Frame(app_shell, bg="#f4f6f8")
+        header.pack(fill="x", pady=(0, 12))
+        tk.Label(
+            header,
+            text=APP_NAME,
+            font=("Segoe UI", 18, "bold"),
+            bg="#f4f6f8",
+            fg="#17202a",
+        ).pack(anchor="w")
+        tk.Label(
+            header,
+            text=f"Automation controls for Path of Exile sessions - v{APP_VERSION}",
+            font=("Segoe UI", 9),
+            bg="#f4f6f8",
+            fg="#5f6b7a",
+        ).pack(anchor="w", pady=(2, 0))
 
-        # Weapon Swap Controls
-        self.setup_weapon_swap_controls(main_tab)
+        self.tab_control = ttk.Notebook(app_shell)
+        dashboard_tab = self._create_tab(self.tab_control)
+        hotkeys_tab = self._create_tab(self.tab_control)
+        tools_tab = self._create_tab(self.tab_control)
+        self.tab_control.add(dashboard_tab, text="Dashboard")
+        self.tab_control.add(hotkeys_tab, text="Hotkeys")
+        self.tab_control.add(tools_tab, text="Tools")
 
-        # Key Combo Controls
-        self.setup_key_combo_controls(main_tab)
+        dashboard_body = tk.Frame(dashboard_tab, bg="#f4f6f8")
+        dashboard_body.pack(fill="both", expand=True)
+        self.setup_poe_checkboxes(dashboard_body)
 
-        # Map Anoint Controls
-        self.setup_map_anoint_controls(main_tab)
+        dashboard_columns = tk.Frame(dashboard_body, bg="#f4f6f8")
+        dashboard_columns.pack(fill="both", expand=True)
+        dashboard_columns.columnconfigure(0, weight=1)
+        dashboard_columns.columnconfigure(1, weight=1)
+        left_column = tk.Frame(dashboard_columns, bg="#f4f6f8")
+        right_column = tk.Frame(dashboard_columns, bg="#f4f6f8")
+        left_column.grid(row=0, column=0, sticky="new", padx=(0, 6))
+        right_column.grid(row=0, column=1, sticky="new", padx=(6, 0))
 
-        # Settings Tab
-        settings_tab = ttk.Frame(self.tab_control)
-        self.tab_control.add(settings_tab, text='Settings')
-        self.setup_hotkey_settings(settings_tab)
+        self.setup_key_combo_controls(left_column)
+        self.setup_weapon_swap_controls(left_column)
+        self.setup_flask_controls(right_column)
+        self.setup_hotkey_settings(hotkeys_tab)
+        self.setup_map_anoint_controls(tools_tab)
+        self.setup_dump_items_tools(tools_tab)
+        self.setup_update_controls(tools_tab)
 
         self.tab_control.pack(expand=1, fill='both')
-        self.root.attributes('-topmost', True)
+
+    def _configure_theme(self):
+        style = ttk.Style()
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("TNotebook", background="#f4f6f8", borderwidth=0)
+        style.configure("TNotebook.Tab", padding=(16, 9), font=("Segoe UI", 9, "bold"))
+        style.configure("TFrame", background="#f4f6f8")
+
+    def _create_tab(self, notebook):
+        tab = ttk.Frame(notebook)
+        tab.columnconfigure(0, weight=1)
+        return tab
+
+    def _section(self, parent, title, subtitle=None, accent="#1f6feb"):
+        section = tk.Frame(parent, bg="#ffffff", bd=1, relief="solid", highlightthickness=0)
+        section.pack(fill="x", padx=2, pady=6)
+        section.columnconfigure(1, weight=1)
+
+        tk.Frame(section, bg=accent, width=5).grid(row=0, column=0, rowspan=2, sticky="ns")
+
+        header = tk.Frame(section, bg="#ffffff")
+        header.grid(row=0, column=1, sticky="ew", padx=14, pady=(10, 5))
+        tk.Label(
+            header,
+            text=title,
+            font=("Segoe UI", 11, "bold"),
+            bg="#ffffff",
+            fg="#17202a",
+        ).pack(anchor="w")
+        if subtitle:
+            tk.Label(
+                header,
+                text=subtitle,
+                font=("Segoe UI", 8),
+                bg="#ffffff",
+                fg="#657384",
+            ).pack(anchor="w", pady=(2, 0))
+
+        body = tk.Frame(section, bg="#ffffff")
+        body.grid(row=1, column=1, sticky="ew", padx=14, pady=(0, 12))
+        body.columnconfigure(0, weight=1)
+        return body
+
+    def _field_row(self, parent, label_text):
+        row = tk.Frame(parent, bg="#ffffff")
+        row.pack(fill="x", pady=4)
+        tk.Label(
+            row,
+            text=label_text,
+            width=14,
+            anchor="w",
+            font=("Segoe UI", 9),
+            bg="#ffffff",
+            fg="#334155",
+        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
+        return row
+
+    def _text_field(self, parent, width):
+        field = tk.Text(
+            parent,
+            height=1,
+            width=width,
+            bg="#f8fafc",
+            fg="#111827",
+            relief="solid",
+            bd=1,
+            padx=6,
+            pady=3,
+            font=("Segoe UI", 10),
+        )
+        field.grid(row=0, column=1, sticky="w")
+        field.bind("<KeyRelease>", lambda e: self.save_all_settings())
+        return field
+
+    def _action_button(self, parent, text, command, width=20, color="#1f6feb", active_color="#1557b0"):
+        button = tk.Button(
+            parent,
+            text=text,
+            command=command,
+            width=width,
+            height=1,
+            bg=color,
+            fg="white",
+            activebackground=active_color,
+            activeforeground="white",
+            relief="flat",
+            padx=10,
+            pady=6,
+            font=("Segoe UI", 10, "bold"),
+        )
+        return button
 
     def setup_poe_checkboxes(self, parent):
-        poe1_checkbox_var = tk.BooleanVar(value=True)
-        poe1_checkbox = tk.Checkbutton(
+        body = self._section(
             parent,
-            text="Only work in Path of Exile",
-            variable=poe1_checkbox_var,
-            command=lambda: self.set_poe1_enabled(poe1_checkbox_var.get())
+            "Session Guard",
+            "Run automation only when the selected game client is active.",
+            accent="#2563eb"
         )
-        poe1_checkbox.pack(pady=2)
+        self.poe1_checkbox_var = tk.BooleanVar(value=True)
+        self.poe2_checkbox_var = tk.BooleanVar(value=True)
 
-        poe2_checkbox_var = tk.BooleanVar(value=True)
-        poe2_checkbox = tk.Checkbutton(
-            parent,
-            text="Only work in Path of Exile 2",
-            variable=poe2_checkbox_var,
-            command=lambda: self.set_poe2_enabled(poe2_checkbox_var.get())
-        )
-        poe2_checkbox.pack(pady=2)
+        for label, variable, command in [
+            ("Path of Exile", self.poe1_checkbox_var, lambda: self.set_poe1_enabled(self.poe1_checkbox_var.get())),
+            ("Path of Exile 2", self.poe2_checkbox_var, lambda: self.set_poe2_enabled(self.poe2_checkbox_var.get())),
+        ]:
+            tk.Checkbutton(
+                body,
+                text=label,
+                variable=variable,
+                command=command,
+                bg="#ffffff",
+                fg="#1f2937",
+                activebackground="#ffffff",
+                font=("Segoe UI", 9),
+            ).pack(side="left", padx=(0, 18))
 
     def setup_flask_controls(self, parent):
-        # Button Key Frame
-        button_key_frame = tk.Frame(parent)
-        button_key_frame.pack()
-        tk.Label(button_key_frame, text="Button").pack(side='left', padx=5)
-        self.button_key = tk.Text(button_key_frame, height=1, width=5, bg="white")
-        self.button_key.pack(side='left')
-        self.button_key.bind('<KeyRelease>', lambda e: self.save_all_settings())
-
-        # Button Delay Frame
-        button_delay_frame = tk.Frame(parent)
-        button_delay_frame.pack()
-        tk.Label(button_delay_frame, text="Delay").pack(side='left', padx=5)
-        self.button_delay = tk.Text(button_delay_frame, height=1, width=5, bg="white")
-        self.button_delay.pack(side='left')
-        self.button_delay.bind('<KeyRelease>', lambda e: self.save_all_settings())
-
-        self.click_flask_button = tk.Button(
+        body = self._section(
             parent,
-            text="Start flask",
-            command=self._toggle_flask_wrapper,
-            width=20,
-            height=5,
-            padx=10,
-            pady=10
+            "Flask Automation",
+            "Press configured flask keys on a randomized delay.",
+            accent="#16a34a"
         )
-        self.click_flask_button.pack()
+        self.button_key = self._text_field(self._field_row(body, "Flask keys"), 10)
+        self.button_delay = self._text_field(self._field_row(body, "Delay range"), 10)
+        self.click_flask_button = self._action_button(
+            body,
+            "Start flask",
+            self._toggle_flask_wrapper,
+            color="#16a34a",
+            active_color="#15803d"
+        )
+        self.click_flask_button.pack(anchor="e", pady=(10, 0))
 
     def setup_weapon_swap_controls(self, parent):
-        weapon_key_frame = tk.Frame(parent)
-        weapon_key_frame.pack(pady=(20, 0))
-        tk.Label(weapon_key_frame, text="Button").pack(side='left', padx=5)
-        self.weapon_key = tk.Text(weapon_key_frame, height=1, width=5, bg="white")
-        self.weapon_key.pack(side='left')
-        self.weapon_key.bind('<KeyRelease>', lambda e: self.save_all_settings())
-
-        self.click_weapon_swap_button = tk.Button(
+        body = self._section(
             parent,
-            text="Start weapon swap",
-            command=self._toggle_weapon_swap_wrapper,
-            width=20,
-            height=5,
-            padx=10,
-            pady=10
+            "Weapon Swap",
+            "Bind the in-game action key and run the swap sequence on A.",
+            accent="#7c3aed"
         )
-        self.click_weapon_swap_button.pack()
+        self.weapon_key = self._text_field(self._field_row(body, "After swap"), 10)
+        self.click_weapon_swap_button = self._action_button(
+            body,
+            "Start weapon swap",
+            self._toggle_weapon_swap_wrapper,
+            color="#7c3aed",
+            active_color="#6d28d9"
+        )
+        self.click_weapon_swap_button.pack(anchor="e", pady=(10, 0))
 
     def setup_key_combo_controls(self, parent):
-        key_combo_frame = tk.Frame(parent)
-        key_combo_frame.pack(pady=(20, 0))
-
-        trigger_key_frame = tk.Frame(key_combo_frame)
-        trigger_key_frame.pack()
-        tk.Label(trigger_key_frame, text="Bind").pack(side='left', padx=5)
-        self.key_combo_trigger_key = tk.Text(trigger_key_frame, height=1, width=5, bg="white")
-        self.key_combo_trigger_key.pack(side='left')
-        self.key_combo_trigger_key.bind('<KeyRelease>', lambda e: self.save_all_settings())
-
-        combo_keys_frame = tk.Frame(key_combo_frame)
-        combo_keys_frame.pack()
-        tk.Label(combo_keys_frame, text="To keys").pack(side='left', padx=5)
-        self.key_combo_keys = tk.Text(combo_keys_frame, height=1, width=20, bg="white")
-        self.key_combo_keys.pack(side='left')
-        self.key_combo_keys.bind('<KeyRelease>', lambda e: self.save_all_settings())
-
-        self.click_key_combo_button = tk.Button(
+        body = self._section(
             parent,
-            text="Start key combo",
-            command=self._toggle_key_combo_wrapper,
-            width=20,
-            height=5,
-            padx=10,
-            pady=10
+            "Key Bind",
+            "Bind one trigger key to a timed sequence such as A -> X F.",
+            accent="#f97316"
         )
-        self.click_key_combo_button.pack()
+        self.key_combo_trigger_key = self._text_field(self._field_row(body, "Bind key"), 10)
+        self.key_combo_keys = self._text_field(self._field_row(body, "Press keys"), 10)
+        self.click_key_combo_button = self._action_button(
+            body,
+            "Start key bind",
+            self._toggle_key_combo_wrapper,
+            color="#f97316",
+            active_color="#ea580c"
+        )
+        self.click_key_combo_button.pack(anchor="e", pady=(10, 0))
     
     def setup_map_anoint_controls(self, parent):
-        self.click_map_anoint_button = tk.Button(
-            parent,
-            text="Anoint Map",
-            command=self._toggle_map_anoint_wrapper,
-            width=20,
-            height=5,
-            padx=10,
-            pady=10
+        body = self._section(parent, "Map Anoint", "Run the configured oil sequence.", accent="#0891b2")
+        self.click_map_anoint_button = self._action_button(
+            body,
+            "Anoint Map",
+            self._toggle_map_anoint_wrapper,
+            color="#0891b2",
+            active_color="#0e7490"
         )
-        # self.click_map_anoint_button.pack(pady=(20, 0))  # Temporarily hidden
+        self.click_map_anoint_button.pack(anchor="w")
+
+    def setup_dump_items_tools(self, parent):
+        body = self._section(parent, "Dump Items", "Select inventory bounds for stash dumping.", accent="#db2777")
+        self.dump_items_coords_button = self._action_button(
+            body,
+            "Select Coordinates",
+            self._select_dump_items_coords_wrapper,
+            width=22,
+            color="#db2777",
+            active_color="#be185d"
+        )
+        self.dump_items_coords_button.pack(anchor="w")
+
+    def setup_update_controls(self, parent):
+        body = self._section(parent, "Updates", "Check GitHub Releases for a newer installer.", accent="#0f766e")
+        self.check_updates_button = self._action_button(
+            body,
+            "Check for updates",
+            lambda: self.check_for_updates(manual=True),
+            width=20,
+            color="#0f766e",
+            active_color="#115e59",
+        )
+        self.check_updates_button.pack(anchor="w")
+        self.update_status_label = tk.Label(
+            body,
+            text=f"Current version: {APP_VERSION}",
+            font=("Segoe UI", 8),
+            fg="#64748b",
+            bg="#ffffff",
+        )
+        self.update_status_label.pack(anchor="w", pady=(8, 0))
 
     def setup_hotkey_settings(self, parent):
         """Setup hotkey configuration UI"""
-        # Flask Hotkey Section
-        flask_hotkey_frame = tk.Frame(parent)
-        flask_hotkey_frame.pack(pady=20, padx=20, fill='x')
-        
+        body = self._section(
+            parent,
+            "Global Hotkeys",
+            "Set shortcuts for toggles and one-shot tools.",
+            accent="#475569"
+        )
+        self.flask_hotkey_entry, self.flask_set_button, self.flask_status_label = self._hotkey_row(
+            body,
+            "Flask toggle",
+            self._start_listening_flask_hotkey_wrapper,
+            self._clear_flask_hotkey_wrapper,
+        )
+        self.weapon_swap_hotkey_entry, self.weapon_swap_set_button, self.weapon_swap_status_label = self._hotkey_row(
+            body,
+            "Weapon swap",
+            self._start_listening_weapon_swap_hotkey_wrapper,
+            self._clear_weapon_swap_hotkey_wrapper,
+        )
+        self.map_anoint_hotkey_entry, self.map_anoint_set_button, self.map_anoint_status_label = self._hotkey_row(
+            body,
+            "Map anoint",
+            self._start_listening_map_anoint_hotkey_wrapper,
+            self._clear_map_anoint_hotkey_wrapper,
+        )
+        self.dump_items_hotkey_entry, self.dump_items_set_button, self.dump_items_status_label = self._hotkey_row(
+            body,
+            "Dump items",
+            self._start_listening_dump_items_hotkey_wrapper,
+            self._clear_dump_items_hotkey_wrapper,
+        )
+
+    def _hotkey_row(self, parent, label_text, set_command, clear_command):
+        row = tk.Frame(parent, bg="#ffffff")
+        row.pack(fill="x", pady=8)
+
         tk.Label(
-            flask_hotkey_frame,
-            text="Flask Toggle Hotkey:",
-            font=('Arial', 10, 'bold')
-        ).pack(anchor='w', pady=(0, 5))
-        
-        flask_input_frame = tk.Frame(flask_hotkey_frame)
-        flask_input_frame.pack(fill='x')
-        
-        self.flask_hotkey_entry = tk.Entry(flask_input_frame, width=20, state='readonly')
-        self.flask_hotkey_entry.pack(side='left', padx=5)
-        
-        self.flask_set_button = tk.Button(
-            flask_input_frame,
+            row,
+            text=label_text,
+            width=14,
+            anchor="w",
+            font=("Segoe UI", 9, "bold"),
+            bg="#ffffff",
+            fg="#334155",
+        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
+
+        entry = tk.Entry(row, width=11, state="readonly", relief="solid", bd=1, font=("Segoe UI", 10))
+        entry.grid(row=0, column=1, sticky="w", padx=(0, 8))
+
+        set_button = tk.Button(
+            row,
             text="Set",
-            command=self._start_listening_flask_hotkey_wrapper,
-            width=10
+            command=set_command,
+            width=8,
+            bg="#e8f0fe",
+            fg="#174ea6",
+            activebackground="#d2e3fc",
+            relief="flat",
+            font=("Segoe UI", 9, "bold"),
         )
-        self.flask_set_button.pack(side='left', padx=5)
-        
+        set_button.grid(row=0, column=2, padx=(0, 6))
+
         tk.Button(
-            flask_input_frame,
+            row,
             text="Clear",
-            command=self._clear_flask_hotkey_wrapper,
-            width=10
-        ).pack(side='left', padx=5)
-        
-        self.flask_status_label = tk.Label(
-            flask_hotkey_frame,
-            text="Click 'Set' and press a key to assign hotkey",
-            font=('Arial', 8),
-            fg='gray'
+            command=clear_command,
+            width=8,
+            bg="#f1f5f9",
+            fg="#334155",
+            activebackground="#e2e8f0",
+            relief="flat",
+            font=("Segoe UI", 9),
+        ).grid(row=0, column=3)
+
+        status = tk.Label(
+            row,
+            text="No hotkey set",
+            font=("Segoe UI", 8),
+            fg="#64748b",
+            bg="#ffffff",
         )
-        self.flask_status_label.pack(anchor='w', pady=(5, 0))
-        
-        # Weapon Swap Hotkey Section
-        weapon_swap_hotkey_frame = tk.Frame(parent)
-        weapon_swap_hotkey_frame.pack(pady=20, padx=20, fill='x')
-        
-        tk.Label(
-            weapon_swap_hotkey_frame,
-            text="Weapon Swap Toggle Hotkey:",
-            font=('Arial', 10, 'bold')
-        ).pack(anchor='w', pady=(0, 5))
-        
-        weapon_swap_input_frame = tk.Frame(weapon_swap_hotkey_frame)
-        weapon_swap_input_frame.pack(fill='x')
-        
-        self.weapon_swap_hotkey_entry = tk.Entry(weapon_swap_input_frame, width=20, state='readonly')
-        self.weapon_swap_hotkey_entry.pack(side='left', padx=5)
-        
-        self.weapon_swap_set_button = tk.Button(
-            weapon_swap_input_frame,
-            text="Set",
-            command=self._start_listening_weapon_swap_hotkey_wrapper,
-            width=10
-        )
-        self.weapon_swap_set_button.pack(side='left', padx=5)
-        
-        tk.Button(
-            weapon_swap_input_frame,
-            text="Clear",
-            command=self._clear_weapon_swap_hotkey_wrapper,
-            width=10
-        ).pack(side='left', padx=5)
-        
-        self.weapon_swap_status_label = tk.Label(
-            weapon_swap_hotkey_frame,
-            text="Click 'Set' and press a key to assign hotkey",
-            font=('Arial', 8),
-            fg='gray'
-        )
-        self.weapon_swap_status_label.pack(anchor='w', pady=(5, 0))
-        
-        # Map Anoint Hotkey Section
-        map_anoint_hotkey_frame = tk.Frame(parent)
-        map_anoint_hotkey_frame.pack(pady=20, padx=20, fill='x')
-        
-        tk.Label(
-            map_anoint_hotkey_frame,
-            text="Map Anoint Hotkey:",
-            font=('Arial', 10, 'bold')
-        ).pack(anchor='w', pady=(0, 5))
-        
-        map_anoint_input_frame = tk.Frame(map_anoint_hotkey_frame)
-        map_anoint_input_frame.pack(fill='x')
-        
-        self.map_anoint_hotkey_entry = tk.Entry(map_anoint_input_frame, width=20, state='readonly')
-        self.map_anoint_hotkey_entry.pack(side='left', padx=5)
-        
-        self.map_anoint_set_button = tk.Button(
-            map_anoint_input_frame,
-            text="Set",
-            command=self._start_listening_map_anoint_hotkey_wrapper,
-            width=10
-        )
-        self.map_anoint_set_button.pack(side='left', padx=5)
-        
-        tk.Button(
-            map_anoint_input_frame,
-            text="Clear",
-            command=self._clear_map_anoint_hotkey_wrapper,
-            width=10
-        ).pack(side='left', padx=5)
-        
-        self.map_anoint_status_label = tk.Label(
-            map_anoint_hotkey_frame,
-            text="Click 'Set' and press a key to assign hotkey",
-            font=('Arial', 8),
-            fg='gray'
-        )
-        self.map_anoint_status_label.pack(anchor='w', pady=(5, 0))
-        
-        # Dump Items Section
-        dump_items_hotkey_frame = tk.Frame(parent)
-        dump_items_hotkey_frame.pack(pady=20, padx=20, fill='x')
-        
-        tk.Label(
-            dump_items_hotkey_frame,
-            text="Dump Items Hotkey:",
-            font=('Arial', 10, 'bold')
-        ).pack(anchor='w', pady=(0, 5))
-        
-        dump_items_input_frame = tk.Frame(dump_items_hotkey_frame)
-        dump_items_input_frame.pack(fill='x')
-        
-        self.dump_items_hotkey_entry = tk.Entry(dump_items_input_frame, width=20, state='readonly')
-        self.dump_items_hotkey_entry.pack(side='left', padx=5)
-        
-        self.dump_items_set_button = tk.Button(
-            dump_items_input_frame,
-            text="Set",
-            command=self._start_listening_dump_items_hotkey_wrapper,
-            width=10
-        )
-        self.dump_items_set_button.pack(side='left', padx=5)
-        
-        tk.Button(
-            dump_items_input_frame,
-            text="Clear",
-            command=self._clear_dump_items_hotkey_wrapper,
-            width=10
-        ).pack(side='left', padx=5)
-        
-        self.dump_items_status_label = tk.Label(
-            dump_items_hotkey_frame,
-            text="Click 'Set' and press a key to assign hotkey",
-            font=('Arial', 8),
-            fg='gray'
-        )
-        self.dump_items_status_label.pack(anchor='w', pady=(5, 0))
-        
-        # Coordinates selection button
-        coords_frame = tk.Frame(dump_items_hotkey_frame)
-        coords_frame.pack(fill='x', pady=(10, 0))
-        
-        self.dump_items_coords_button = tk.Button(
-            coords_frame,
-            text="Select Coordinates",
-            command=self._select_dump_items_coords_wrapper,
-            width=20
-        )
-        self.dump_items_coords_button.pack()
+        status.grid(row=1, column=1, columnspan=3, sticky="w", pady=(4, 0))
+        return entry, set_button, status
 
     def _build_status_icon(self, dot_color: str) -> ImageTk.PhotoImage:
         """Build app icon with top-right status dot."""
@@ -758,6 +819,58 @@ class PathOfExileHelper:
             self.key_combo_trigger_key,
             self.key_combo_keys
         )
+
+    def check_for_updates(self, manual: bool = False):
+        """Check GitHub Releases for a newer app version."""
+        if self._cleaning_up:
+            return
+
+        if self.update_status_label:
+            self.update_status_label.config(text="Checking for updates...", fg="#475569")
+        if self.check_updates_button:
+            self.check_updates_button.config(state="disabled")
+
+        def on_result(result):
+            self.root.after(0, lambda: self._handle_update_result(result, manual))
+
+        check_for_update_async(on_result)
+
+    def _handle_update_result(self, result: dict, manual: bool):
+        if self._cleaning_up:
+            return
+
+        if self.check_updates_button:
+            self.check_updates_button.config(state="normal")
+
+        if not result.get("ok"):
+            error_text = str(result.get("error") or "Could not check for updates.")
+            if self.update_status_label:
+                self.update_status_label.config(text=error_text, fg="#b45309")
+            if manual:
+                messagebox.showwarning("Update check", error_text, parent=self.root)
+            return
+
+        latest_version = str(result.get("latest_version"))
+        if not result.get("update_available"):
+            status = f"You're up to date: v{APP_VERSION}"
+            if self.update_status_label:
+                self.update_status_label.config(text=status, fg="#15803d")
+            if manual:
+                messagebox.showinfo("Update check", status, parent=self.root)
+            return
+
+        download_url = result.get("download_url") or result.get("html_url")
+        status = f"New version available: v{latest_version}"
+        if self.update_status_label:
+            self.update_status_label.config(text=status, fg="#1d4ed8")
+
+        if messagebox.askyesno(
+            "Update available",
+            f"{APP_NAME} v{latest_version} is available.\n\nOpen the download page now?",
+            parent=self.root,
+        ):
+            if download_url:
+                webbrowser.open(str(download_url))
 
     def cleanup_and_close(self):
         """Cleanup all resources before closing"""

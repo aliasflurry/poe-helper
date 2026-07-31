@@ -119,7 +119,7 @@ class Flask:
             return
         
         self.listening_for_flask_hotkey = True
-        self.flask_set_button.config(text="Cancel", bg="red")
+        self.flask_set_button.config(text="Cancel", bg="#dc2626", fg="white")
         self.flask_status_label.config(text="Press any key (or Ctrl+key) to set hotkey...", fg='blue')
         
         def on_key_press(event):
@@ -163,7 +163,7 @@ class Flask:
     def stop_listening_flask_hotkey(self):
         """Stop listening for flask hotkey"""
         self.listening_for_flask_hotkey = False
-        self.flask_set_button.config(text="Set", bg="SystemButtonFace")
+        self.flask_set_button.config(text="Set", bg="#e8f0fe", fg="#174ea6")
         if self.flask_hotkey_listener_callback is not None:
             try:
                 self.flask_hotkey_listener_callback()

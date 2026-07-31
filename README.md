@@ -20,10 +20,13 @@ A Windows automation tool for Path of Exile and Path of Exile 2 that provides va
 
 ## Installation
 
-### Using the Pre-built Executable
+### Using the Installer
 
-1. Download `POE_Helper.exe` from the `src/dist/` directory
-2. Run the executable (no installation required)
+1. Download the latest `POE_Helper_Setup_v*.exe` from GitHub Releases
+2. Run the installer
+3. Launch `PGame Helper` from the Start menu or optional desktop shortcut
+
+The app checks GitHub Releases automatically when it starts. If a newer version is available, it offers to open the download page.
 
 ### From Source
 
@@ -85,9 +88,17 @@ pyinstaller helper.spec
 
 The executable will be generated in `src/dist/POE_Helper.exe`.
 
+To build the Windows installer, install Inno Setup 6 and run:
+
+```powershell
+.\build_installer.ps1
+```
+
+The installer will be generated in `dist-installer/`.
+
 ## Configuration
 
-Settings are automatically saved to `src/settings.json`. You can manually edit this file or use the GUI to configure:
+Settings are automatically saved to `%LOCALAPPDATA%\PGameHelper\settings.json`. You can manually edit this file or use the GUI to configure:
 
 - Flask button keys and delays
 - Weapon swap key

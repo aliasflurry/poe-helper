@@ -88,7 +88,7 @@ class WeaponSwap:
             return
         
         self.listening_for_weapon_swap_hotkey = True
-        self.weapon_swap_set_button.config(text="Cancel", bg="red")
+        self.weapon_swap_set_button.config(text="Cancel", bg="#dc2626", fg="white")
         self.weapon_swap_status_label.config(text="Press any key (or Ctrl+key) to set hotkey...", fg='blue')
         
         def on_key_press(event):
@@ -132,7 +132,7 @@ class WeaponSwap:
     def stop_listening_weapon_swap_hotkey(self):
         """Stop listening for weapon swap hotkey"""
         self.listening_for_weapon_swap_hotkey = False
-        self.weapon_swap_set_button.config(text="Set", bg="SystemButtonFace")
+        self.weapon_swap_set_button.config(text="Set", bg="#e8f0fe", fg="#174ea6")
         if self.weapon_swap_hotkey_listener_callback is not None:
             try:
                 self.weapon_swap_hotkey_listener_callback()
