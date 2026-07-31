@@ -8,7 +8,9 @@ a = Analysis(
     ['helper.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        ('assets', 'assets'),
+    ],
     hiddenimports=[
     'psutil',
     'win32api',

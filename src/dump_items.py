@@ -341,7 +341,7 @@ class DumpItems:
             return
         
         self.listening_for_dump_items_hotkey = True
-        self.dump_items_set_button.config(text="Cancel", bg="red")
+        self.dump_items_set_button.config(text="Cancel", bg="#dc2626", fg="white")
         self.dump_items_status_label.config(text="Press any key (or Ctrl+key) to set hotkey...", fg='blue')
         
         def on_key_press(event):
@@ -385,7 +385,7 @@ class DumpItems:
     def stop_listening_dump_items_hotkey(self):
         """Stop listening for dump items hotkey"""
         self.listening_for_dump_items_hotkey = False
-        self.dump_items_set_button.config(text="Set", bg="SystemButtonFace")
+        self.dump_items_set_button.config(text="Set", bg="#e8f0fe", fg="#174ea6")
         if self.dump_items_hotkey_listener_callback is not None:
             try:
                 self.dump_items_hotkey_listener_callback()
